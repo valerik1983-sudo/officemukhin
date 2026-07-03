@@ -3,6 +3,7 @@ from app.main import bot, dp, init_db
 
 async def main():
     init_db()
+    await bot.delete_webhook()
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
