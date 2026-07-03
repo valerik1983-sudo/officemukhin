@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 
-# Загружаем переменные из .env (только для локальной разработки)
+# Загружаем .env только для других переменных (токен бота, BASE_URL и т.д.)
 load_dotenv()
 
 # === Telegram ===
@@ -9,27 +9,22 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN не задан в переменных окружения")
 
-# ID менеджеров (через запятую: 123456789,987654321)
-MANAGER_IDS = []
-if os.getenv("MANAGER_IDS"):
-    MANAGER_IDS = [int(id.strip()) for id in os.getenv("MANAGER_IDS").split(",") if id.strip()]
+# === ID менеджеров (хардкод) ===
+MANAGER_IDS = [258670125, 2126934529]
 
-# === T‑Банк ===
-TBANK_TERMINAL_KEY = os.getenv("TBANK_TERMINAL_KEY")
-if not TBANK_TERMINAL_KEY:
-    raise ValueError("TBANK_TERMINAL_KEY не задан")
+# === T‑Банк (хардкод реальных ключей) ===
+TBANK_TERMINAL_KEY = "1764171907776"
+TBANK_SECRET_KEY = "MaD6WiZa0j8pS99q"
 
-TBANK_SECRET_KEY = os.getenv("TBANK_SECRET_KEY")
-if not TBANK_SECRET_KEY:
-    raise ValueError("TBANK_SECRET_KEY не задан")
+# Проверка (на всякий случай)
+if not TBANK_TERMINAL_KEY or not TBANK_SECRET_KEY:
+    raise ValueError("Ключи T‑Банк не заданы")
 
 # === Webhook URLs ===
-# Базовый URL, на котором висит бот (например, https://ваш-бот.bothost.net)
-BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
+BASE_URL = os.getenv("BASE_URL", "https://officemukhin.bothost.net")
 TELEGRAM_WEBHOOK_PATH = "/webhook/telegram"
 TBANK_WEBHOOK_PATH = "/webhook/tbank"
 
-# Полные URL для вебхуков
 TELEGRAM_WEBHOOK_URL = f"{BASE_URL}{TELEGRAM_WEBHOOK_PATH}"
 TBANK_WEBHOOK_URL = f"{BASE_URL}{TBANK_WEBHOOK_PATH}"
 
