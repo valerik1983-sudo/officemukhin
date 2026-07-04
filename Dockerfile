@@ -76,4 +76,4 @@ RUN chown -R $(id -u):$(id -g) /app/data 2>/dev/null || chown -R 1000:1000 /app/
 
 
 # Определяем точку входа
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3000"]
+CMD ["uvicorn", "app.app.main:app", "--host", "0.0.0.0", "--port", "3000"]
