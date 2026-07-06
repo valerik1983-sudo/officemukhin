@@ -1,4 +1,3 @@
-import asyncio
 import json
 import os
 from contextlib import asynccontextmanager
@@ -12,7 +11,6 @@ from .config import (
     BOT_TOKEN,
     TELEGRAM_WEBHOOK_URL,
     TBANK_WEBHOOK_URL,
-    BASE_URL,
     MANAGER_IDS
 )
 from .database import init_db
@@ -27,7 +25,7 @@ dp = Dispatcher()
 dp.include_router(manager.router)
 dp.include_router(client.router)
 
-# --- Обработчики вебхуков (остаются, но не используются) ---
+# --- Обработчики вебхуков ---
 async def telegram_webhook_handler(request: Request):
     update_data = await request.json()
     update = Update(**update_data)
@@ -91,24 +89,13 @@ async def tbank_webhook_handler(request: Request):
 
     return {"status": "ok"}
 
-# --- Функция жизненного цикла приложения (поллинг) ---
+# --- Функция жизненного цикла приложения ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-
-    # Удаляем вебхук, чтобы поллинг работал без конфликтов
-    try:
-        await bot.delete_webhook()
-        print("✅ Webhook удалён, бот переключён на поллинг.")
-    except Exception as e:
-        print(f"⚠️ Не удалось удалить вебхук: {e}")
-
-    print("🚀 Бот запущен в режиме поллинга (временное решение).")
-    print(f"💳 Вебхук для T‑Банк (пока не используется): {TBANK_WEBHOOK_URL}")
-
-    # Запускаем поллинг в фоне
-    asyncio.create_task(dp.start_polling(bot))
-
+    print("🚀 Бот запущен в режиме вебхука.")
+    print(f"🌐 Вебхук для Telegram: {TELEGRAM_WEBHOOK_URL}")
+    print(f"💳 Вебхук для T‑Банк: {TBANK_WEBHOOK_URL}")
     yield
     await bot.session.close()
 
