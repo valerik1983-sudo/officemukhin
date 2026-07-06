@@ -29,7 +29,7 @@ dp.include_router(client.router)
 async def telegram_webhook_handler(request: Request):
     update_data = await request.json()
     update = Update(**update_data)
-    await dp.process_update(update)
+    await dp.feed_update(bot, update)   # <-- исправлено
     return {"status": "ok"}
 
 async def tbank_webhook_handler(request: Request):
