@@ -9,58 +9,35 @@ from aiogram.types import Update
 import uvicorn
 
 from .config import (
-    BOT_TOKEN, TELEGRAM_WEBHOOK_URL, TBANK_WEBHOOK_PATH,
-    BASE_URL, MANAGER_IDS
+    BOT_TOKEN,
+    TELEGRAM_WEBHOOK_URL,
+    TBANK_WEBHOOK_URL,          # <-- добавлено
+    BASE_URL,
+    MANAGER_IDS
 )
 from .database import init_db
 from .handlers import client, manager
 from .services.tbank import verify_webhook_signature
-from .keyboards import main_menu
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-import requests  # убедитесь, что импорт есть
-
-async def get_public_ip():
-    try:
-        response = requests.get('https://api.ipify.org?format=json', timeout=5)
-        return response.json().get('ip')
-    except Exception as e:
-        return f"Не удалось получить IP: {e}"
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    init_db()
-    
-    # Получаем и выводим IP в логи
-    ip = await get_public_ip()
-    print(f"🌐 Публичный IP-адрес сервера: {ip}")
-    
-    # ... остальной код (удаление вебхука, запуск поллинга)
-
+# --- Инициализация бота и диспетчера ---
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 dp.include_router(manager.router)
 dp.include_router(client.router)
 
-
+# --- Обработчики вебхуков ---
 async def telegram_webhook_handler(request: Request):
     update_data = await request.json()
     update = Update(**update_data)
     await dp.process_update(update)
     return {"status": "ok"}
 
-
 async def tbank_webhook_handler(request: Request):
     data = await request.json()
     print("=== WEBHOOK RECEIVED ===")
     print(data)
-
-    # Для диагностики можно отправлять менеджеру, но закомментируем, чтобы не спамить
-    # for manager_id in MANAGER_IDS:
-    #     try:
-    #         await bot.send_message(manager_id, f"🔔 Получен вебхук:\n```json\n{json.dumps(data, indent=2)}\n```")
-    #     except Exception: pass
 
     if not verify_webhook_signature(data):
         return {"status": "unauthorized"}, 401
@@ -114,48 +91,37 @@ async def tbank_webhook_handler(request: Request):
 
     return {"status": "ok"}
 
-
+# --- Функция жизненного цикла приложения ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Инициализируем БД
     init_db()
-
-    # Удаляем старый вебхук, чтобы поллинг работал без конфликтов
-    try:
-        await bot.delete_webhook()
-        print("✅ Webhook удалён, бот переключён на поллинг.")
-    except Exception as e:
-        print(f"⚠️ Не удалось удалить вебхук: {e}")
-
-    # Запускаем поллинг в фоновой задаче
-    asyncio.create_task(dp.start_polling(bot))
-
-    print("🚀 Бот запущен в режиме поллинга. FastAPI сервер также работает.")
-    print(f"🌐 Вебхук для Telegram (пока не используется): {TELEGRAM_WEBHOOK_URL}")
-    print(f"💳 Вебхук для T‑Банк (будет работать, когда домен станет доступен): {BASE_URL}/webhook/tbank")
+    print("🚀 Бот запущен в режиме вебхука.")
+    print(f"🌐 Вебхук для Telegram: {TELEGRAM_WEBHOOK_URL}")
+    print(f"💳 Вебхук для T‑Банк: {TBANK_WEBHOOK_URL}")
 
     yield
-
-    # При завершении останавливаем поллинг (но это сложно сделать корректно, поэтому просто закрываем сессию)
     await bot.session.close()
 
-
+# --- FastAPI приложение ---
 app = FastAPI(lifespan=lifespan, title="Payment Bot for Bothost")
 
 app.post("/webhook/telegram")(telegram_webhook_handler)
 app.post("/webhook/tbank")(tbank_webhook_handler)
 
-
 @app.get("/ping")
 async def ping():
     return {"status": "ok", "message": "Server is alive"}
 
+@app.get("/webhook/tbank")
+async def test_tbank():
+    return {"status": "ok", "message": "T-Bank webhook endpoint is reachable"}
 
+# --- Точка входа ---
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 3000))
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
         port=port,
-        reload=True
+        reload=False
     )

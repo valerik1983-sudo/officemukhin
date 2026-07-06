@@ -21,7 +21,7 @@ if not TBANK_TERMINAL_KEY or not TBANK_SECRET_KEY:
     raise ValueError("Ключи T‑Банк не заданы")
 
 # === Webhook URLs ===
-BASE_URL = os.getenv("BASE_URL", "https://officemukhin.bothost.net")
+BASE_URL = os.getenv("BASE_URL", "https://officemukhin.bothost.tech")
 TELEGRAM_WEBHOOK_PATH = "/webhook/telegram"
 TBANK_WEBHOOK_PATH = "/webhook/tbank"
 
