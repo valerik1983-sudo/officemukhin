@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 from contextlib import asynccontextmanager
@@ -11,33 +12,32 @@ from .config import (
     BOT_TOKEN,
     TELEGRAM_WEBHOOK_URL,
     TBANK_WEBHOOK_URL,
-    MANAGER_IDS
+    MANAGER_IDS,
+    TBANK_SECRET_KEY   # <-- теперь импортировано
 )
 from .database import init_db
 from .handlers import client, manager
 from .services.tbank import verify_webhook_signature
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-# --- Инициализация бота и диспетчера ---
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
-
 dp.include_router(manager.router)
 dp.include_router(client.router)
 
-# --- Обработчики вебхуков ---
+
 async def telegram_webhook_handler(request: Request):
     update_data = await request.json()
     update = Update(**update_data)
     await dp.feed_update(bot, update)
     return {"status": "ok"}
 
+
 async def tbank_webhook_handler(request: Request):
     data = await request.json()
     print("=== WEBHOOK RECEIVED ===")
     print(data)
 
-    # Отправляем диагностическое сообщение менеджеру
     for manager_id in MANAGER_IDS:
         try:
             await bot.send_message(
@@ -49,7 +49,7 @@ async def tbank_webhook_handler(request: Request):
 
     # Проверка подписи
     if not verify_webhook_signature(data):
-        # Дополнительная диагностика: вычисляем строку подписи сами
+        # Диагностика для случая ошибки подписи
         params = data.copy()
         token = params.pop("Token", None)
         filtered = {}
@@ -66,7 +66,7 @@ async def tbank_webhook_handler(request: Request):
                 await bot.send_message(
                     manager_id,
                     f"❌ Ошибка: подпись вебхука не прошла проверку.\n"
-                    f"🔍 Строка для подписи (без ключей, с секретным ключом):\n{data_string}\n"
+                    f"🔍 Строка для подписи:\n{data_string}\n"
                     f"🔑 Ожидаемый токен: {expected_token}\n"
                     f"📩 Присланный токен: {token}"
                 )
@@ -74,7 +74,7 @@ async def tbank_webhook_handler(request: Request):
                 pass
         return {"status": "unauthorized"}, 401
 
-    # ... остальной код обработки (поиск инвойса, обновление статуса, отправка уведомлений) ...
+    # Если подпись прошла
     order_id = data.get("OrderId")
     status = data.get("Status")
 
@@ -129,10 +129,37 @@ async def tbank_webhook_handler(request: Request):
                         )
                     except Exception:
                         pass
+            else:
+                for manager_id in MANAGER_IDS:
+                    try:
+                        await bot.send_message(
+                            manager_id,
+                            f"❌ Не удалось обновить статус заказа {order_id}."
+                        )
+                    except Exception:
+                        pass
+        else:
+            for manager_id in MANAGER_IDS:
+                try:
+                    await bot.send_message(
+                        manager_id,
+                        f"⚠️ Инвойс с payment_id = {order_id} не найден или уже оплачен."
+                    )
+                except Exception:
+                    pass
+    else:
+        for manager_id in MANAGER_IDS:
+            try:
+                await bot.send_message(
+                    manager_id,
+                    f"ℹ️ Вебхук получен, но статус не CONFIRMED (текущий: {status}) или нет OrderId."
+                )
+            except Exception:
+                pass
 
     return {"status": "ok"}
 
-# --- Функция жизненного цикла приложения ---
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
@@ -142,7 +169,7 @@ async def lifespan(app: FastAPI):
     yield
     await bot.session.close()
 
-# --- FastAPI приложение ---
+
 app = FastAPI(lifespan=lifespan, title="Payment Bot for Bothost")
 
 app.post("/webhook/telegram")(telegram_webhook_handler)
@@ -152,7 +179,6 @@ app.post("/webhook/tbank")(tbank_webhook_handler)
 async def ping():
     return {"status": "ok", "message": "Server is alive"}
 
-# --- Точка входа ---
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 3000))
     uvicorn.run(
