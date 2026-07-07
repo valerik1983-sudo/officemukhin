@@ -17,10 +17,9 @@ TBANK_API_URL = "https://securepay.tinkoff.ru/v2/"
 
 def generate_token(params: Dict[str, Any], password: str) -> Tuple[str, str]:
     """
-    Генерирует токен для запроса к T‑Банк согласно документации.
+    Генерирует токен для запроса к T‑Банк (исходящие запросы).
     Возвращает (token, sign_string)
     """
-    # Добавляем пароль как отдельный параметр для подписи (не в запросе)
     sign_params = params.copy()
     sign_params["Password"] = password
 
@@ -32,12 +31,6 @@ def generate_token(params: Dict[str, Any], password: str) -> Tuple[str, str]:
 
     sorted_keys = sorted(filtered.keys())
     data_string = "".join(str(filtered[k]) for k in sorted_keys)
-
-    # Отладка
-    print(f"SIGN STRING: {data_string}")
-    logger.debug(f"SIGN STRING: {data_string}")
-
-    # Токен в нижнем регистре (как просили техники)
     token = hashlib.sha256(data_string.encode("utf-8")).hexdigest().lower()
     return token, data_string
 
@@ -49,9 +42,6 @@ def _build_error_message(
     description: str = "",
     sign_string: str = ""
 ) -> str:
-    """
-    Формирует сообщение об ошибке с диагностической информацией.
-    """
     debug_info = (
         f"TerminalKey: {TBANK_TERMINAL_KEY}\n"
         f"SecretKey (маска): {TBANK_SECRET_KEY[:4]}...{TBANK_SECRET_KEY[-4:]}\n"
@@ -73,10 +63,6 @@ def create_payment(
     fail_url: str,
     client_tg_id: Optional[int] = None
 ) -> Dict[str, Any]:
-    """
-    Шаг 1: Создает платеж через T‑Банк (метод Init).
-    Возвращает payment_id и payment_url.
-    """
     data_value = {}
     if client_tg_id:
         data_value["TelegramUserId"] = str(client_tg_id)
@@ -144,10 +130,6 @@ def get_qr(
     description: str = "",
     data_type: str = "PAYLOAD"
 ) -> Dict[str, Any]:
-    """
-    Шаг 2: Получает QR-код для созданного платежа (метод GetQr).
-    data_type: "PAYLOAD" - возвращает ссылку, "IMAGE" - возвращает SVG.
-    """
     payload = {
         "TerminalKey": TBANK_TERMINAL_KEY,
         "PaymentId": payment_id,
@@ -200,9 +182,6 @@ def get_qr(
 
 
 def check_payment_status(order_id: str) -> str:
-    """
-    Проверяет статус платежа в T‑Банк.
-    """
     payload = {
         "TerminalKey": TBANK_TERMINAL_KEY,
         "OrderId": order_id
@@ -225,29 +204,25 @@ def check_payment_status(order_id: str) -> str:
 
 def verify_webhook_signature(data: Dict[str, Any]) -> bool:
     """
-    Проверяет подпись вебхука от T‑Банк.
-    Используется для входящих уведомлений (не для исходящих запросов).
+    Проверяет подпись вебхука от T‑Банк (входящие уведомления).
+    Алгоритм: удаляем поле Token, сортируем оставшиеся ключи по алфавиту,
+    склеиваем значения (без ключей) в этом порядке, добавляем секретный ключ,
+    вычисляем SHA-256 в нижнем регистре, сравниваем с Token.
     """
-    # Копируем данные и удаляем Token
     params = data.copy()
     token = params.pop("Token", None)
     if not token:
         return False
 
-    # Убираем пустые значения и вложенные объекты (если есть)
     filtered = {}
     for k, v in params.items():
         if v is None or v == "" or isinstance(v, dict):
             continue
         filtered[k] = v
 
-    # Сортируем ключи по алфавиту
     sorted_keys = sorted(filtered.keys())
-    # Склеиваем значения (без ключей) в том же порядке
     data_string = "".join(str(filtered[k]) for k in sorted_keys)
-    # Добавляем секретный ключ в конец
     data_string += TBANK_SECRET_KEY
 
-    # Вычисляем SHA-256 в нижнем регистре
     expected_token = hashlib.sha256(data_string.encode("utf-8")).hexdigest().lower()
     return token == expected_token
