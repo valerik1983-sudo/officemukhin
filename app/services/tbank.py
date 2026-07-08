@@ -203,26 +203,23 @@ def check_payment_status(order_id: str) -> str:
 
 
 def verify_webhook_signature(data: Dict[str, Any]) -> bool:
-    """
-    Проверяет подпись вебхука от T‑Банк.
-    Используются только поля: Amount, OrderId, PaymentId, Status, TerminalKey.
-    """
     params = data.copy()
     token = params.pop("Token", None)
     if not token:
         return False
 
-    # Явный список полей, участвующих в подписи
-    fields = ["Amount", "OrderId", "PaymentId", "Status", "TerminalKey"]
+    # Добавляем пароль как поле
+    params["Password"] = TBANK_SECRET_KEY
+
+    # Убираем вложенные объекты и пустые значения
     filtered = {}
-    for k in fields:
-        v = params.get(k)
-        if v is not None and v != "" and not isinstance(v, dict):
-            filtered[k] = v
+    for k, v in params.items():
+        if v is None or v == "" or isinstance(v, dict):
+            continue
+        filtered[k] = v
 
     sorted_keys = sorted(filtered.keys())
     data_string = "".join(str(filtered[k]) for k in sorted_keys)
-    data_string += TBANK_SECRET_KEY
 
     expected_token = hashlib.sha256(data_string.encode("utf-8")).hexdigest().lower()
     return token == expected_token
