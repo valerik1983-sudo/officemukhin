@@ -205,14 +205,14 @@ def check_payment_status(order_id: str) -> str:
 def verify_webhook_signature(data: Dict[str, Any]) -> bool:
     """
     Проверяет подпись вебхука от T‑Банк.
-    В подписи участвуют только поля: Amount, OrderId, PaymentId, Status, TerminalKey.
+    Используются только поля: Amount, OrderId, PaymentId, Status, TerminalKey.
     """
     params = data.copy()
     token = params.pop("Token", None)
     if not token:
         return False
 
-    # Явно указываем поля, которые участвуют в подписи
+    # Явный список полей, участвующих в подписи
     fields = ["Amount", "OrderId", "PaymentId", "Status", "TerminalKey"]
     filtered = {}
     for k in fields:
