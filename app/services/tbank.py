@@ -208,10 +208,7 @@ def verify_webhook_signature(data: Dict[str, Any]) -> bool:
     if not token:
         return False
 
-    # Добавляем пароль как поле
-    params["Password"] = TBANK_SECRET_KEY
-
-    # Убираем вложенные объекты и пустые значения
+    # Исключаем вложенные объекты и пустые значения
     filtered = {}
     for k, v in params.items():
         if v is None or v == "" or isinstance(v, dict):
@@ -220,6 +217,7 @@ def verify_webhook_signature(data: Dict[str, Any]) -> bool:
 
     sorted_keys = sorted(filtered.keys())
     data_string = "".join(str(filtered[k]) for k in sorted_keys)
+    data_string += TBANK_SECRET_KEY  # секретный ключ добавляем в конец без имени
 
     expected_token = hashlib.sha256(data_string.encode("utf-8")).hexdigest().lower()
     return token == expected_token
