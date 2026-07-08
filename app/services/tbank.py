@@ -214,7 +214,6 @@ def verify_webhook_signature(data: Dict[str, Any]) -> bool:
     for k, v in params.items():
         if v is None or v == "" or isinstance(v, dict):
             continue
-        # Преобразуем булевы значения в нижний регистр
         if isinstance(v, bool):
             filtered[k] = str(v).lower()
         else:
