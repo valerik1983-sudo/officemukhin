@@ -13,7 +13,7 @@ from .config import (
     TELEGRAM_WEBHOOK_URL,
     TBANK_WEBHOOK_URL,
     MANAGER_IDS,
-    TBANK_SECRET_KEY   # <-- теперь импортировано
+    TBANK_SECRET_KEY
 )
 from .database import init_db
 from .handlers import client, manager
@@ -35,46 +35,15 @@ async def telegram_webhook_handler(request: Request):
 
 async def tbank_webhook_handler(request: Request):
     data = await request.json()
+    # Можно оставить print в логах для контроля (не спамит в Telegram)
     print("=== WEBHOOK RECEIVED ===")
     print(data)
 
-    for manager_id in MANAGER_IDS:
-        try:
-            await bot.send_message(
-                manager_id,
-                f"🔔 Получен вебхук от T‑Банк\nOrderId: {data.get('OrderId')}\nStatus: {data.get('Status')}"
-            )
-        except Exception:
-            pass
-
     # Проверка подписи
     if not verify_webhook_signature(data):
-        # Диагностика для случая ошибки подписи
-        params = data.copy()
-        token = params.pop("Token", None)
-        filtered = {}
-        for k, v in params.items():
-            if v is None or v == "" or isinstance(v, dict):
-                continue
-            filtered[k] = v
-        sorted_keys = sorted(filtered.keys())
-        data_string = "".join(str(filtered[k]) for k in sorted_keys)
-        data_string += TBANK_SECRET_KEY
-        expected_token = hashlib.sha256(data_string.encode("utf-8")).hexdigest().lower()
-        for manager_id in MANAGER_IDS:
-            try:
-                await bot.send_message(
-                    manager_id,
-                    f"❌ Ошибка: подпись вебхука не прошла проверку.\n"
-                    f"🔍 Строка для подписи:\n{data_string}\n"
-                    f"🔑 Ожидаемый токен: {expected_token}\n"
-                    f"📩 Присланный токен: {token}"
-                )
-            except Exception:
-                pass
+        print("❌ Подпись не прошла проверку")
         return {"status": "unauthorized"}, 401
 
-    # Если подпись прошла
     order_id = data.get("OrderId")
     status = data.get("Status")
 
@@ -82,23 +51,16 @@ async def tbank_webhook_handler(request: Request):
         from .database import get_invoice_by_payment_id, update_invoice_status
 
         invoice = get_invoice_by_payment_id(str(order_id))
-        for manager_id in MANAGER_IDS:
-            try:
-                await bot.send_message(
-                    manager_id,
-                    f"🔍 Результат поиска инвойса по payment_id = {order_id}:\n{invoice if invoice else 'Не найден'}"
-                )
-            except Exception:
-                pass
-
         if invoice and invoice["status"] != "paid":
             updated = update_invoice_status(str(order_id), "paid")
             if updated:
+                # Кнопки для менеджера
                 builder = InlineKeyboardBuilder()
                 builder.button(text="📦 Отправить трек", callback_data=f"track_{updated['order_number']}")
                 builder.button(text="📢 Уведомить", callback_data=f"notify_{updated['order_number']}")
                 builder.adjust(2)
 
+                # Уведомление менеджеру
                 for manager_id in MANAGER_IDS:
                     try:
                         await bot.send_message(
@@ -118,6 +80,7 @@ async def tbank_webhook_handler(request: Request):
                     except Exception:
                         pass
 
+                # Уведомление клиенту
                 if updated.get("client_tg_id"):
                     try:
                         order_number = updated.get('order_number') or 'не указан'
@@ -129,33 +92,6 @@ async def tbank_webhook_handler(request: Request):
                         )
                     except Exception:
                         pass
-            else:
-                for manager_id in MANAGER_IDS:
-                    try:
-                        await bot.send_message(
-                            manager_id,
-                            f"❌ Не удалось обновить статус заказа {order_id}."
-                        )
-                    except Exception:
-                        pass
-        else:
-            for manager_id in MANAGER_IDS:
-                try:
-                    await bot.send_message(
-                        manager_id,
-                        f"⚠️ Инвойс с payment_id = {order_id} не найден или уже оплачен."
-                    )
-                except Exception:
-                    pass
-    else:
-        for manager_id in MANAGER_IDS:
-            try:
-                await bot.send_message(
-                    manager_id,
-                    f"ℹ️ Вебхук получен, но статус не CONFIRMED (текущий: {status}) или нет OrderId."
-                )
-            except Exception:
-                pass
 
     return {"status": "ok"}
 
