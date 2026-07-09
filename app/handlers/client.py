@@ -137,7 +137,7 @@ async def process_amount_button(callback: CallbackQuery, state: FSMContext):
     amount = int(callback.data.split("_")[1])
     await state.update_data(temp_amount=amount)
     await callback.message.edit_text(
-        "👤 **Введите ФИО заказчика (получателя) для этого заказа:**\n"
+        "👤 **Введите ФИО для этого заказа:**\n"
         "Например: Иванов Иван Иванович"
     )
     await state.set_state(OrderForm.waiting_client_name)
@@ -195,7 +195,7 @@ async def process_client_name(message: Message, state: FSMContext):
     await message.answer(
         f"📦 **Заказ {data['temp_order_number']} добавлен!**\n\n"
         f"💰 Сумма: {data['temp_amount']:,} ₽\n"
-        f"👤 ФИО заказчика: {name}\n\n"
+        f"👤 ФИО заказа: {name}\n\n"
         f"Хотите добавить ещё один заказ?",
         reply_markup=builder.as_markup()
     )
@@ -280,7 +280,7 @@ async def process_client_name_group(message: Message, state: FSMContext):
     await message.answer(
         f"📦 **Заказ {data['temp_order_number']} добавлен!**\n\n"
         f"💰 Сумма: {data['temp_amount']:,} ₽\n"
-        f"👤 ФИО заказчика: {name}\n\n"
+        f"👤 ФИО заказа: {name}\n\n"
         f"Хотите добавить ещё один заказ?",
         reply_markup=builder.as_markup()
     )
@@ -308,7 +308,7 @@ async def finish_orders(callback: CallbackQuery, state: FSMContext):
         f"{orders_text}\n\n"
         f"💰 **Общая сумма:** {total_amount:,} ₽\n\n"
         f"Теперь укажите общие данные для отправки.\n"
-        f"Введите **ФИО получателя** (на кого оформлена доставка):"
+        f"Введите **ФИО получателя** (на кого оформляется доставка):"
     )
     await state.set_state(OrderForm.waiting_recipient_name)
     await callback.answer()
@@ -322,7 +322,7 @@ async def process_recipient_name(message: Message, state: FSMContext):
         return
     await state.update_data(recipient_name=name)
     await message.answer(
-        "📍 **Введите адрес доставки:**\n"
+        "📍 **Введите адрес доставки СДЭК:**\n"
         "Например: г. Москва, ул. Тверская, д.5, кв.12"
     )
     await state.set_state(OrderForm.waiting_recipient_address)
@@ -334,7 +334,7 @@ async def process_recipient_address(message: Message, state: FSMContext):
     await state.update_data(recipient_address=address)
     await message.answer(
         "📱 **Введите номер телефона получателя:**\n"
-        "Например: +7 999 123-45-67"
+        "Например: 79991234567"
     )
     await state.set_state(OrderForm.waiting_recipient_phone)
 
@@ -426,30 +426,30 @@ async def process_recipient_phone(message: Message, state: FSMContext):
         for o in orders_list
     ])
 
-    if sbp_available:
-        await message.answer(
-            f"🔗 **Ссылка для оплаты {len(orders_list)} заказов**\n"
-            f"💰 **Общая сумма:** {total_amount:,} ₽\n\n"
-            f"📦 **Заказы:**\n{orders_text}\n\n"
-            f"📍 **Адрес:** {recipient_address}\n"
-            f"👤 **Получатель:** {recipient_name}\n"
-            f"📱 **Телефон:** {recipient_phone}\n\n"
-            f"_Автоматически поступит на счёт после оплаты._",
-            reply_markup=builder.as_markup()
-        )
-    else:
-        await message.answer(
-            f"⚠️ **СБП временно недоступна.**\n"
-            f"Используйте обычную ссылку:\n\n"
-            f"💳 {payment_url}\n"
-            f"💰 {total_amount:,} ₽\n\n"
-            f"📦 **Заказы:**\n{orders_text}\n\n"
-            f"📍 **Адрес:** {recipient_address}\n"
-            f"👤 **Получатель:** {recipient_name}\n"
-            f"📱 **Телефон:** {recipient_phone}\n\n"
-            f"_Оплата по этой ссылке также автоматически поступит на счёт._",
-            reply_markup=builder.as_markup()
-        )
+        if sbp_available:
+            await message.answer(
+                f"🔗 **Ссылка для оплаты {len(orders_list)} заказов:**\n{qr_data}\n\n"
+                f"💰 **Общая сумма:** {total_amount:,} ₽\n\n"
+                f"📦 **Заказы:**\n{orders_text}\n\n"
+                f"📍 **Адрес:** {recipient_address}\n"
+                f"👤 **Получатель:** {recipient_name}\n"
+                f"📱 **Телефон:** {recipient_phone}\n\n"
+                f"_Автоматически поступит на счёт после оплаты._",
+                reply_markup=builder.as_markup()
+            )
+        else:
+            await message.answer(
+                f"⚠️ **СБП временно недоступна.**\n"
+                f"Используйте обычную ссылку:\n\n"
+                f"💳 {payment_url}\n"
+                f"💰 **Общая сумма:** {total_amount:,} ₽\n\n"
+                f"📦 **Заказы:**\n{orders_text}\n\n"
+                f"📍 **Адрес:** {recipient_address}\n"
+                f"👤 **Получатель:** {recipient_name}\n"
+                f"📱 **Телефон:** {recipient_phone}\n\n"
+                f"_Оплата по этой ссылке также автоматически поступит на счёт._",
+                reply_markup=builder.as_markup()
+            )
 
     await state.clear()
 
