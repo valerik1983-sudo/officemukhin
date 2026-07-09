@@ -210,7 +210,7 @@ async def process_phone(message: Message, state: FSMContext):
 
     amount_kopecks = amount_rub * 100
 
-    # === ИСПРАВЛЕНИЕ: сохраняем строковый payment_id ===
+    # Сохраняем строковый payment_id (будет совпадать с OrderId в вебхуке)
     payment_id_str = f"ORDER_{order_number}_{int(datetime.now().timestamp())}"
 
     bot_info = await message.bot.get_me()
@@ -226,7 +226,7 @@ async def process_phone(message: Message, state: FSMContext):
             client_tg_id=client_id
         )
 
-        bank_payment_id = payment_result["payment_id"]   # числовой PaymentId
+        bank_payment_id = payment_result["payment_id"]   # числовой PaymentId для QR
         payment_url = payment_result["payment_url"]
 
         try:
@@ -267,11 +267,10 @@ async def process_phone(message: Message, state: FSMContext):
         "description": f"Заказ {order_number}"
     })
 
-    # === Клавиатура после получения ссылки ===
+    # === Клавиатура после получения ссылки (без кнопки "Я оплатил") ===
     builder = InlineKeyboardBuilder()
     builder.button(text="🔄 Оформить новый заказ", callback_data="client_order")
     builder.button(text="🏠 Главное меню", callback_data="main_menu")
-    builder.button(text="✅ Я оплатил", callback_data="payment_confirmed")
     builder.adjust(1)
 
     if sbp_available:
@@ -301,81 +300,6 @@ async def process_phone(message: Message, state: FSMContext):
         )
 
     await state.clear()
-
-
-@router.callback_query(F.data == "payment_confirmed")
-async def payment_confirmed(callback: CallbackQuery):
-    client_id = callback.from_user.id
-    client_username = callback.from_user.username or "Неизвестно"
-
-    # Получаем последний заказ клиента из БД
-    from ..database import get_invoices_by_client
-    invoices = get_invoices_by_client(client_id)
-    if not invoices:
-        # Если заказов нет – отправляем менеджеру уведомление без данных
-        for manager_id in MANAGER_IDS:
-            try:
-                await callback.bot.send_message(
-                    manager_id,
-                    f"🔄 **Клиент подтвердил оплату вручную**\n\n"
-                    f"👤 **Клиент:** @{client_username} (ID: {client_id})\n"
-                    f"⚠️ **Заказ не найден в базе данных.**"
-                )
-            except Exception:
-                pass
-        await callback.message.edit_text(
-            "🔄 **Проверяем статус платежа...**\n\n"
-            "Пожалуйста, подождите несколько секунд."
-        )
-        await callback.message.answer(
-            "✅ **Спасибо за подтверждение!**\n\n"
-            "Мы получили ваше уведомление и проверим платеж вручную.\n"
-            "Если оплата прошла, мы свяжемся с вами в ближайшее время.",
-            reply_markup=main_menu(is_manager=False)
-        )
-        await callback.answer()
-        return
-
-    # Берём самый свежий заказ (последний по времени)
-    latest_invoice = invoices[0]  # они уже отсортированы по created_at DESC
-
-    order_number = latest_invoice.get("order_number") or "Не указан"
-    amount_rub = latest_invoice.get("amount_rub") or 0
-    address = latest_invoice.get("delivery_address") or "Не указан"
-    client_name = latest_invoice.get("client_name") or "Не указано"
-    client_phone = latest_invoice.get("client_phone") or "Не указан"
-    status = latest_invoice.get("status") or "created"
-
-    # Отправляем уведомление менеджерам с полной информацией
-    for manager_id in MANAGER_IDS:
-        try:
-            await callback.bot.send_message(
-                manager_id,
-                f"🔄 **Клиент подтвердил оплату вручную**\n\n"
-                f"📦 **Заказ:** {order_number}\n"
-                f"💰 **Сумма:** {amount_rub:,} ₽\n"
-                f"📍 **Адрес:** {address}\n"
-                f"👤 **ФИО:** {client_name}\n"
-                f"📱 **Телефон:** {client_phone}\n"
-                f"🔘 **Текущий статус:** {status.upper()}\n"
-                f"👤 **Клиент:** @{client_username} (ID: {client_id})\n\n"
-                f"📌 **Просьба проверить статус платежа в личном кабинете Т‑Банк.**"
-            )
-        except Exception:
-            pass
-
-    await callback.message.edit_text(
-        "🔄 **Проверяем статус платежа...**\n\n"
-        "Пожалуйста, подождите несколько секунд."
-    )
-    await callback.message.answer(
-        "✅ **Спасибо за подтверждение!**\n\n"
-        "Мы получили ваше уведомление и проверим платеж вручную.\n"
-        "Если оплата прошла, мы свяжемся с вами в ближайшее время.\n\n"
-        "Если у вас есть вопросы, напишите менеджеру.",
-        reply_markup=main_menu(is_manager=False)
-    )
-    await callback.answer()
 
 
 @router.callback_query(F.data == "main_menu")
