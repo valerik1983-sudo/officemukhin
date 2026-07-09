@@ -209,7 +209,9 @@ async def process_phone(message: Message, state: FSMContext):
     client_username = message.from_user.username or ""
 
     amount_kopecks = amount_rub * 100
-    payment_id = f"ORDER_{order_number}_{int(datetime.now().timestamp())}"
+
+    # === ИСПРАВЛЕНИЕ: сохраняем строковый payment_id ===
+    payment_id_str = f"ORDER_{order_number}_{int(datetime.now().timestamp())}"
 
     bot_info = await message.bot.get_me()
     bot_username = bot_info.username
@@ -217,20 +219,20 @@ async def process_phone(message: Message, state: FSMContext):
     try:
         payment_result = create_payment(
             amount=amount_kopecks,
-            order_id=payment_id,
+            order_id=payment_id_str,
             description=f"Заказ {order_number}",
             success_url=f"https://t.me/{bot_username}",
             fail_url=f"https://t.me/{bot_username}",
             client_tg_id=client_id
         )
 
-        payment_id = payment_result["payment_id"]
+        bank_payment_id = payment_result["payment_id"]   # числовой PaymentId
         payment_url = payment_result["payment_url"]
 
         try:
             qr_result = get_qr(
-                payment_id=payment_id,
-                order_id=payment_id,
+                payment_id=bank_payment_id,
+                order_id=payment_id_str,
                 amount=amount_kopecks,
                 description=f"Заказ {order_number}",
                 data_type="PAYLOAD"
@@ -250,8 +252,9 @@ async def process_phone(message: Message, state: FSMContext):
         await state.clear()
         return
 
+    # Сохраняем в БД с payment_id_str (строку)
     save_invoice({
-        "payment_id": payment_id,
+        "payment_id": payment_id_str,
         "amount": amount_kopecks,
         "amount_rub": amount_rub,
         "order_number": order_number,
@@ -384,5 +387,3 @@ async def main_menu_callback(callback: CallbackQuery, state: FSMContext):
         reply_markup=main_menu(is_manager)
     )
     await callback.answer()
-
-
