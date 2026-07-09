@@ -35,11 +35,9 @@ async def telegram_webhook_handler(request: Request):
 
 async def tbank_webhook_handler(request: Request):
     data = await request.json()
-    # Можно оставить print в логах для контроля (не спамит в Telegram)
     print("=== WEBHOOK RECEIVED ===")
     print(data)
 
-    # Проверка подписи
     if not verify_webhook_signature(data):
         print("❌ Подпись не прошла проверку")
         return {"status": "unauthorized"}, 401
@@ -59,23 +57,55 @@ async def tbank_webhook_handler(request: Request):
                 builder.button(text="📦 Отправить трек", callback_data=f"track_{updated['order_number']}")
                 builder.button(text="📢 Уведомить", callback_data=f"notify_{updated['order_number']}")
                 builder.button(text="🏠 Главное меню", callback_data="manager_back")
-                builder.adjust(2, 1)  # две кнопки в первой строке, одна во второй
+                builder.adjust(2, 1)
+
+                # Проверяем, групповой ли это платёж
+                is_group = updated.get("is_group", 0)
+                is_group = bool(is_group) if isinstance(is_group, int) else is_group
+
+                if is_group:
+                    orders_data = updated.get("orders_data")
+                    try:
+                        orders_list = json.loads(orders_data) if orders_data else []
+                    except:
+                        orders_list = []
+
+                    orders_text = "\n".join([
+                        f"• Заказ {o.get('order_number', '?')} – {o.get('amount_rub', 0):,} ₽ (ФИО: {o.get('client_name', 'Не указан')})"
+                        for o in orders_list
+                    ])
+
+                    message_text = (
+                        f"✅ **ДЕНЬГИ ПОСТУПИЛИ (ГРУППОВОЙ ПЛАТЁЖ)!**\n\n"
+                        f"📦 **Заказы в оплате:**\n{orders_text}\n\n"
+                        f"💰 **Общая сумма:** {updated['amount_rub']:,} ₽\n"
+                        f"📍 **Адрес доставки:** {updated.get('delivery_address') or 'Не указан'}\n"
+                        f"👤 **Получатель:** {updated.get('client_name') or 'Не указан'}\n"
+                        f"📱 **Телефон:** {updated.get('client_phone') or 'Не указан'}\n"
+                        f"🕒 **Время оплаты:** {updated.get('paid_at') or 'неизвестно'}\n"
+                        f"🆔 **Payment ID:** {order_id[:16]}...\n\n"
+                        f"⚡️ Готовьте к отправке!"
+                    )
+                else:
+                    message_text = (
+                        f"✅ **ДЕНЬГИ ПОСТУПИЛИ!**\n\n"
+                        f"📦 **Заказ:** {updated.get('order_number') or 'Ручная ссылка'}\n"
+                        f"📝 **Комментарий:** {updated.get('description') or 'Не указан'}\n"
+                        f"💰 **Сумма:** {updated['amount_rub']:,} ₽\n"
+                        f"📍 **Адрес:** {updated.get('delivery_address') or 'Не указан'}\n"
+                        f"👤 **ФИО:** {updated.get('client_name') or 'Не указано'}\n"
+                        f"📱 **Телефон:** {updated.get('client_phone') or 'Не указан'}\n"
+                        f"🕒 **Время оплаты:** {updated.get('paid_at') or 'неизвестно'}\n"
+                        f"🆔 **Payment ID:** {order_id[:16]}...\n\n"
+                        f"⚡️ Готовьте к отправке!"
+                    )
 
                 # Уведомление менеджеру
                 for manager_id in MANAGER_IDS:
                     try:
                         await bot.send_message(
                             manager_id,
-                            f"✅ **ДЕНЬГИ ПОСТУПИЛИ!**\n\n"
-                            f"📦 **Заказ:** {updated.get('order_number') or 'Ручная ссылка'}\n"
-                            f"📝 **Комментарий:** {updated.get('description') or 'Не указан'}\n"
-                            f"💰 **Сумма:** {updated['amount_rub']:,} ₽\n"
-                            f"📍 **Адрес:** {updated.get('delivery_address') or 'Не указан'}\n"
-                            f"👤 **ФИО:** {updated.get('client_name') or 'Не указано'}\n"
-                            f"📱 **Телефон:** {updated.get('client_phone') or 'Не указан'}\n"
-                            f"🕒 **Время оплаты:** {updated.get('paid_at') or 'неизвестно'}\n"
-                            f"🆔 **Payment ID:** {order_id[:16]}...\n\n"
-                            f"⚡️ Готовьте к отправке!",
+                            message_text,
                             reply_markup=builder.as_markup()
                         )
                     except Exception:
@@ -84,10 +114,14 @@ async def tbank_webhook_handler(request: Request):
                 # Уведомление клиенту
                 if updated.get("client_tg_id"):
                     try:
-                        order_number = updated.get('order_number') or ' не указан'
+                        if is_group:
+                            order_text = f"{len(orders_list)} заказов"
+                        else:
+                            order_text = updated.get('order_number') or 'не указан'
+
                         await bot.send_message(
                             updated["client_tg_id"],
-                            f"✅ **Оплата по заявке №{order_number} поступила на счёт.**\n\n"
+                            f"✅ **Оплата по заявке №{order_text} поступила на счёт.**\n\n"
                             f"Ожидайте подтверждения на сайте в рабочее время и отправки посылки.\n\n"
                             f"Спасибо за доверие!"
                         )

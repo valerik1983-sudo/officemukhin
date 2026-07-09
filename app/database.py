@@ -2,6 +2,7 @@ import sqlite3
 from datetime import datetime
 from typing import Optional, Dict, Any
 from contextlib import contextmanager
+import json
 
 from .config import DATABASE_PATH
 
@@ -35,7 +36,9 @@ def init_db():
                 status TEXT DEFAULT 'created',
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 paid_at DATETIME,
-                description TEXT
+                description TEXT,
+                is_group BOOLEAN DEFAULT 0,
+                orders_data TEXT
             )
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_id ON invoices(payment_id)")
@@ -50,8 +53,9 @@ def save_invoice(data: Dict[str, Any]) -> int:
         cursor.execute("""
             INSERT INTO invoices (
                 payment_id, amount, amount_rub, order_number, delivery_address,
-                client_tg_id, client_username, client_name, client_phone, creator_tg_id, description
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                client_tg_id, client_username, client_name, client_phone, creator_tg_id,
+                description, is_group, orders_data
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             data["payment_id"],
             data["amount"],
@@ -63,7 +67,9 @@ def save_invoice(data: Dict[str, Any]) -> int:
             data.get("client_name"),
             data.get("client_phone"),
             data["creator_tg_id"],
-            data.get("description")
+            data.get("description"),
+            data.get("is_group", 0),
+            data.get("orders_data")
         ))
         conn.commit()
         return cursor.lastrowid
