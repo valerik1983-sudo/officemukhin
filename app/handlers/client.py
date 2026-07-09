@@ -426,30 +426,30 @@ async def process_recipient_phone(message: Message, state: FSMContext):
         for o in orders_list
     ])
 
-        if sbp_available:
-            await message.answer(
-                f"🔗 **Ссылка для оплаты {len(orders_list)} заказов:**\n{qr_data}\n\n"
-                f"💰 **Общая сумма:** {total_amount:,} ₽\n\n"
-                f"📦 **Заказы:**\n{orders_text}\n\n"
-                f"📍 **Адрес:** {recipient_address}\n"
-                f"👤 **Получатель:** {recipient_name}\n"
-                f"📱 **Телефон:** {recipient_phone}\n\n"
-                f"_Автоматически поступит на счёт после оплаты._",
-                reply_markup=builder.as_markup()
-            )
-        else:
-            await message.answer(
-                f"⚠️ **СБП временно недоступна.**\n"
-                f"Используйте обычную ссылку:\n\n"
-                f"💳 {payment_url}\n"
-                f"💰 **Общая сумма:** {total_amount:,} ₽\n\n"
-                f"📦 **Заказы:**\n{orders_text}\n\n"
-                f"📍 **Адрес:** {recipient_address}\n"
-                f"👤 **Получатель:** {recipient_name}\n"
-                f"📱 **Телефон:** {recipient_phone}\n\n"
-                f"_Оплата по этой ссылке также автоматически поступит на счёт._",
-                reply_markup=builder.as_markup()
-            )
+    if sbp_available:
+        await message.answer(
+            f"🔗 **Ссылка для оплаты {len(orders_list)} заказов:**\n{qr_data}\n\n"
+            f"💰 **Общая сумма:** {total_amount:,} ₽\n\n"
+            f"📦 **Заказы:**\n{orders_text}\n\n"
+            f"📍 **Адрес:** {recipient_address}\n"
+            f"👤 **Получатель:** {recipient_name}\n"
+            f"📱 **Телефон:** {recipient_phone}\n\n"
+            f"_Автоматически поступит на счёт после оплаты._",
+            reply_markup=builder.as_markup()
+        )
+    else:
+        await message.answer(
+            f"⚠️ **СБП временно недоступна.**\n"
+            f"Используйте обычную ссылку:\n\n"
+            f"💳 {payment_url}\n"
+            f"💰 **Общая сумма:** {total_amount:,} ₽\n\n"
+            f"📦 **Заказы:**\n{orders_text}\n\n"
+            f"📍 **Адрес:** {recipient_address}\n"
+            f"👤 **Получатель:** {recipient_name}\n"
+            f"📱 **Телефон:** {recipient_phone}\n\n"
+            f"_Оплата по этой ссылке также автоматически поступит на счёт._",
+            reply_markup=builder.as_markup()
+        )
 
     await state.clear()
 
