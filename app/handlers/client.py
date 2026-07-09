@@ -5,6 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from datetime import datetime
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+import json
 
 from ..config import MANAGER_IDS
 from ..database import save_invoice, get_invoice_by_payment_id, update_invoice_status
@@ -20,6 +21,10 @@ class OrderForm(StatesGroup):
     waiting_address = State()
     waiting_full_name = State()
     waiting_phone = State()
+    waiting_more_orders = State()
+    waiting_order_number_group = State()
+    waiting_amount_group = State()
+    waiting_client_name_group = State()
 
 
 @router.message(Command("start"))
@@ -205,28 +210,168 @@ async def process_phone(message: Message, state: FSMContext):
     address = data["delivery_address"]
     client_name = data["client_name"]
     client_phone = data["client_phone"]
-    client_id = message.from_user.id
-    client_username = message.from_user.username or ""
 
-    amount_kopecks = amount_rub * 100
+    # Сохраняем первый заказ в список
+    orders_list = [{
+        "order_number": order_number,
+        "amount_rub": amount_rub,
+        "client_name": client_name,
+        "client_phone": client_phone
+    }]
+    await state.update_data(orders_list=orders_list)
 
-    # Сохраняем строковый payment_id (будет совпадать с OrderId в вебхуке)
-    payment_id_str = f"ORDER_{order_number}_{int(datetime.now().timestamp())}"
+    # Спрашиваем, нужно ли добавить ещё заказы
+    builder = InlineKeyboardBuilder()
+    builder.button(text="➕ Добавить ещё заказ", callback_data="add_more_order")
+    builder.button(text="✅ Нет, перейти к оплате", callback_data="finish_orders")
+    builder.adjust(1)
 
-    bot_info = await message.bot.get_me()
+    await message.answer(
+        f"📦 **Заказ {order_number} добавлен!**\n\n"
+        f"💰 Сумма: {amount_rub:,} ₽\n"
+        f"👤 ФИО получателя: {client_name}\n"
+        f"📍 Адрес доставки: {address}\n\n"
+        f"Хотите добавить ещё один заказ?",
+        reply_markup=builder.as_markup()
+    )
+    await state.set_state(OrderForm.waiting_more_orders)
+
+
+@router.callback_query(F.data == "add_more_order", OrderForm.waiting_more_orders)
+async def add_more_order(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text(
+        "📝 **Введите номер следующего заказа:**\n\n"
+        "Например: 123456789"
+    )
+    await state.set_state(OrderForm.waiting_order_number_group)
+    await callback.answer()
+
+
+@router.message(OrderForm.waiting_order_number_group)
+async def process_order_number_group(message: Message, state: FSMContext):
+    order_number = message.text.strip()
+    if not order_number.isdigit():
+        await message.answer(
+            "❌ **Номер заказа должен содержать только цифры.**\n\n"
+            "Пожалуйста, введите номер заказа ещё раз."
+        )
+        return
+    await state.update_data(temp_order_number=order_number)
+    await message.answer(
+        "💰 **Введите сумму для этого заказа (в рублях):**\n\n"
+        "Сумма должна быть кратна 1200."
+    )
+    await state.set_state(OrderForm.waiting_amount_group)
+
+
+@router.message(OrderForm.waiting_amount_group)
+async def process_amount_group(message: Message, state: FSMContext):
+    try:
+        amount = int(message.text.replace(" ", "").replace(",", ""))
+        if amount < 1:
+            raise ValueError
+        if amount % 1200 != 0:
+            await message.answer(
+                "❌ **Ошибка!**\n\n"
+                "Сумма должна быть кратна 1200 ₽.\n"
+                "Пожалуйста, введите сумму, кратную 1200 (например: 1200, 2400, 3600...)"
+            )
+            return
+        await state.update_data(temp_amount=amount)
+        await message.answer(
+            "👤 **Введите ФИО заказчика (получателя) для этого заказа:**\n"
+            "Например: Иванов Иван Иванович"
+        )
+        await state.set_state(OrderForm.waiting_client_name_group)
+    except ValueError:
+        await message.answer(
+            "❌ **Ошибка!**\n\n"
+            "Пожалуйста, введите корректное число.\n"
+            "Например: 1200, 2400, 6000"
+        )
+
+
+@router.message(OrderForm.waiting_client_name_group)
+async def process_client_name_group(message: Message, state: FSMContext):
+    client_name = message.text.strip()
+    if len(client_name.split()) < 2:
+        await message.answer("❌ Пожалуйста, введите полное ФИО (минимум два слова).")
+        return
+
+    data = await state.get_data()
+    orders_list = data.get("orders_list", [])
+    orders_list.append({
+        "order_number": data["temp_order_number"],
+        "amount_rub": data["temp_amount"],
+        "client_name": client_name,
+        "client_phone": data.get("client_phone", "")  # используем общий телефон
+    })
+    await state.update_data(orders_list=orders_list)
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="➕ Добавить ещё заказ", callback_data="add_more_order")
+    builder.button(text="✅ Нет, перейти к оплате", callback_data="finish_orders")
+    builder.adjust(1)
+
+    await message.answer(
+        f"📦 **Заказ {data['temp_order_number']} добавлен!**\n\n"
+        f"💰 Сумма: {data['temp_amount']:,} ₽\n"
+        f"👤 ФИО получателя: {client_name}\n\n"
+        f"Хотите добавить ещё один заказ?",
+        reply_markup=builder.as_markup()
+    )
+    await state.set_state(OrderForm.waiting_more_orders)
+
+
+@router.callback_query(F.data == "finish_orders", OrderForm.waiting_more_orders)
+async def finish_orders(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    orders_list = data.get("orders_list", [])
+    address = data.get("delivery_address")
+    client_id = callback.from_user.id
+    client_username = callback.from_user.username or ""
+
+    if not orders_list:
+        await callback.message.answer("❌ Нет заказов для оплаты.")
+        await state.clear()
+        return
+
+    total_amount = sum(order["amount_rub"] for order in orders_list)
+    amount_kopecks = total_amount * 100
+
+    # Формируем сводку
+    orders_text = "\n".join([
+        f"• Заказ {o['order_number']} – {o['amount_rub']:,} ₽ (ФИО: {o['client_name']})"
+        for o in orders_list
+    ])
+
+    await callback.message.edit_text(
+        f"📦 **Сводка заказов**\n\n"
+        f"{orders_text}\n\n"
+        f"💰 **Общая сумма:** {total_amount:,} ₽\n"
+        f"📍 **Адрес доставки:** {address}\n"
+        f"👤 **Получатель (первый заказ):** {orders_list[0]['client_name']}\n"
+        f"📱 **Телефон:** {orders_list[0]['client_phone']}\n\n"
+        f"🔄 Формирую ссылку для оплаты..."
+    )
+
+    # Создаём групповой платёж
+    payment_id_str = f"GROUP_{int(datetime.now().timestamp())}"
+
+    bot_info = await callback.bot.get_me()
     bot_username = bot_info.username
 
     try:
         payment_result = create_payment(
             amount=amount_kopecks,
             order_id=payment_id_str,
-            description=f"Заказ {order_number}",
+            description=f"Оплата {len(orders_list)} заказов",
             success_url=f"https://t.me/{bot_username}",
             fail_url=f"https://t.me/{bot_username}",
             client_tg_id=client_id
         )
 
-        bank_payment_id = payment_result["payment_id"]   # числовой PaymentId для QR
+        bank_payment_id = payment_result["payment_id"]
         payment_url = payment_result["payment_url"]
 
         try:
@@ -234,7 +379,7 @@ async def process_phone(message: Message, state: FSMContext):
                 payment_id=bank_payment_id,
                 order_id=payment_id_str,
                 amount=amount_kopecks,
-                description=f"Заказ {order_number}",
+                description=f"Оплата {len(orders_list)} заказов",
                 data_type="PAYLOAD"
             )
             qr_data = qr_result["qr_data"]
@@ -244,62 +389,64 @@ async def process_phone(message: Message, state: FSMContext):
             sbp_error = str(e)
 
     except Exception as e:
-        await message.answer(
+        await callback.message.answer(
             f"❌ **Ошибка при создании платежа**\n\n"
-            f"Пожалуйста, попробуйте позже или свяжитесь с поддержкой.\n\n"
             f"Текст ошибки: {str(e)}"
         )
         await state.clear()
+        await callback.answer()
         return
 
-    # Сохраняем в БД с payment_id_str (строку)
+    # Сохраняем в БД
     save_invoice({
         "payment_id": payment_id_str,
         "amount": amount_kopecks,
-        "amount_rub": amount_rub,
-        "order_number": order_number,
+        "amount_rub": total_amount,
+        "order_number": None,
         "delivery_address": address,
         "client_tg_id": client_id,
         "client_username": client_username,
-        "client_name": client_name,
-        "client_phone": client_phone,
+        "client_name": orders_list[0]["client_name"],  # основной получатель
+        "client_phone": orders_list[0]["client_phone"],
         "creator_tg_id": client_id,
-        "description": f"Заказ {order_number}"
+        "description": f"Групповая оплата {len(orders_list)} заказов",
+        "is_group": 1,
+        "orders_data": json.dumps(orders_list, ensure_ascii=False)
     })
 
-    # === Клавиатура после получения ссылки (без кнопки "Я оплатил") ===
+    # Клавиатура после получения ссылки
     builder = InlineKeyboardBuilder()
     builder.button(text="🔄 Оформить новый заказ", callback_data="client_order")
     builder.button(text="🏠 Главное меню", callback_data="main_menu")
     builder.adjust(1)
 
     if sbp_available:
-        await message.answer(
-            f"🔗 **Ссылка на оплату –** {qr_data}\n"
-            f"💰 **Сумма –** {amount_rub:,} ₽\n\n"
-            f"📦 **Заказ:** {order_number}\n"
+        await callback.message.answer(
+            f"🔗 **Ссылка для оплаты {len(orders_list)} заказов**\n"
+            f"💰 **Общая сумма:** {total_amount:,} ₽\n\n"
+            f"📦 **Заказы:**\n{orders_text}\n\n"
             f"📍 **Адрес:** {address}\n"
-            f"👤 **ФИО:** {client_name}\n"
-            f"📱 **Телефон:** {client_phone}\n\n"
+            f"👤 **Получатель:** {orders_list[0]['client_name']}\n"
+            f"📱 **Телефон:** {orders_list[0]['client_phone']}\n\n"
             f"_Автоматически поступит на счёт после оплаты._",
             reply_markup=builder.as_markup()
         )
     else:
-        await message.answer(
+        await callback.message.answer(
             f"⚠️ **СБП временно недоступна.**\n"
-            f"Используйте обычную ссылку для оплаты картой:\n\n"
-            f"💳 **Ссылка:** {payment_url}\n"
-            f"💰 **Сумма:** {amount_rub:,} ₽\n\n"
-            f"📦 **Заказ:** {order_number}\n"
+            f"Используйте обычную ссылку:\n\n"
+            f"💳 {payment_url}\n"
+            f"💰 {total_amount:,} ₽\n\n"
+            f"📦 **Заказы:**\n{orders_text}\n\n"
             f"📍 **Адрес:** {address}\n"
-            f"👤 **ФИО:** {client_name}\n"
-            f"📱 **Телефон:** {client_phone}\n\n"
-            f"_Оплата по этой ссылке также автоматически поступит на счёт._\n"
-            f"Детали ошибки СБП: {sbp_error}",
+            f"👤 **Получатель:** {orders_list[0]['client_name']}\n"
+            f"📱 **Телефон:** {orders_list[0]['client_phone']}\n\n"
+            f"_Оплата по этой ссылке также автоматически поступит на счёт._",
             reply_markup=builder.as_markup()
         )
 
     await state.clear()
+    await callback.answer()
 
 
 @router.callback_query(F.data == "main_menu")
