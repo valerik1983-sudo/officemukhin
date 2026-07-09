@@ -58,7 +58,8 @@ async def tbank_webhook_handler(request: Request):
                 builder = InlineKeyboardBuilder()
                 builder.button(text="📦 Отправить трек", callback_data=f"track_{updated['order_number']}")
                 builder.button(text="📢 Уведомить", callback_data=f"notify_{updated['order_number']}")
-                builder.adjust(2)
+                builder.button(text="🏠 Главное меню", callback_data="manager_back")
+                builder.adjust(2, 1)  # две кнопки в первой строке, одна во второй
 
                 # Уведомление менеджеру
                 for manager_id in MANAGER_IDS:
@@ -83,7 +84,7 @@ async def tbank_webhook_handler(request: Request):
                 # Уведомление клиенту
                 if updated.get("client_tg_id"):
                     try:
-                        order_number = updated.get('order_number') or 'не указан'
+                        order_number = updated.get('order_number') or ' не указан'
                         await bot.send_message(
                             updated["client_tg_id"],
                             f"✅ **Оплата по заявке №{order_number} поступила на счёт.**\n\n"
