@@ -84,6 +84,7 @@ async def tbank_webhook_handler(request: Request):
                         f"📱 **Телефон:** {updated.get('client_phone') or 'Не указан'}\n"
                         f"🕒 **Время оплаты:** {updated.get('paid_at') or 'неизвестно'}\n"
                         f"🆔 **Payment ID:** {order_id[:16]}...\n\n"
+                        f"👤 **Оформил:** @{updated.get('client_username') or 'Неизвестно'} (ID: {updated.get('client_tg_id') or 'неизвестен'})\n\n"
                         f"⚡️ Готовьте к отправке!"
                     )
                 else:
@@ -97,6 +98,7 @@ async def tbank_webhook_handler(request: Request):
                         f"📱 **Телефон:** {updated.get('client_phone') or 'Не указан'}\n"
                         f"🕒 **Время оплаты:** {updated.get('paid_at') or 'неизвестно'}\n"
                         f"🆔 **Payment ID:** {order_id[:16]}...\n\n"
+                        f"👤 **Клиент:** @{updated.get('client_username') or 'Неизвестно'} (ID: {updated.get('client_tg_id') or 'неизвестен'})\n\n"
                         f"⚡️ Готовьте к отправке!"
                     )
 

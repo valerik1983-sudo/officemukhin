@@ -20,6 +20,7 @@ def get_connection():
 def init_db():
     with get_connection() as conn:
         cursor = conn.cursor()
+        # Создаём таблицу, если её нет
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS invoices (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,6 +42,15 @@ def init_db():
                 orders_data TEXT
             )
         """)
+        
+        # === МИГРАЦИЯ: добавляем новые колонки, если их нет ===
+        cursor.execute("PRAGMA table_info(invoices)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'is_group' not in columns:
+            cursor.execute("ALTER TABLE invoices ADD COLUMN is_group BOOLEAN DEFAULT 0")
+        if 'orders_data' not in columns:
+            cursor.execute("ALTER TABLE invoices ADD COLUMN orders_data TEXT")
+        
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_id ON invoices(payment_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_status ON invoices(status)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_client_tg_id ON invoices(client_tg_id)")
