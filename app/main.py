@@ -136,19 +136,36 @@ async def tbank_webhook_handler(request: Request):
                         except Exception:
                             pass
 
+                    # === Уведомление клиенту (инициатору) с номером заказа и суммой ===
                     if updated.get("client_tg_id"):
                         try:
-                            if is_group:
-                                order_text = f"{len(orders_list)} заказов" if 'orders_list' in locals() else "несколько заказов"
-                            elif order_number is not None:
-                                order_text = order_number
+                            amount_rub = updated['amount_rub']
+                            if not is_group and order_number is not None:
+                                # Одиночный заказ
+                                client_message = (
+                                    f"✅ Оплата по заявке №<b>{order_number}</b> в размере <b>{amount_rub:,}</b> рублей поступила на счёт.\n\n"
+                                    f"Ожидайте подтверждения на сайте в рабочее время и отправки посылки.\n\n"
+                                    f"Спасибо за доверие!"
+                                )
+                            elif is_group:
+                                # Групповой заказ
+                                count = len(orders_list) if 'orders_list' in locals() else 0
+                                client_message = (
+                                    f"✅ Оплата по заявке из <b>{count}</b> заказов в размере <b>{amount_rub:,}</b> рублей поступила на счёт.\n\n"
+                                    f"Ожидайте подтверждения на сайте в рабочее время и отправки посылки.\n\n"
+                                    f"Спасибо за доверие!"
+                                )
                             else:
-                                order_text = "ручная ссылка"
+                                # Ручная ссылка – используем комментарий
+                                comment = updated.get("description", "ручная ссылка")
+                                client_message = (
+                                    f"✅ Оплата по заявке на <b>{comment}</b> в размере <b>{amount_rub:,}</b> рублей поступила на счёт.\n\n"
+                                    f"Ожидайте подтверждения на сайте в рабочее время и отправки посылки.\n\n"
+                                    f"Спасибо за доверие!"
+                                )
                             await bot.send_message(
                                 updated["client_tg_id"],
-                                f"<b>✅ Оплата по заявке №{order_text} поступила на счёт.</b>\n\n"
-                                f"Ожидайте подтверждения на сайте в рабочее время и отправки посылки.\n\n"
-                                f"Спасибо за доверие!",
+                                client_message,
                                 parse_mode="HTML"
                             )
                         except Exception:
