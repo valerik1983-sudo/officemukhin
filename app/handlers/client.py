@@ -32,10 +32,11 @@ class OrderForm(StatesGroup):
 async def cmd_start(message: Message):
     is_manager = message.from_user.id in MANAGER_IDS
     await message.answer(
-        "👋 **Добро пожаловать!**\n\n"
+        "👋 <b>Добро пожаловать!</b>\n\n"
         "Я помогу вам оплатить один или несколько заказов.\n"
-        "Нажмите кнопку **«Начать оформление»** ниже.\n\n"
+        "Нажмите кнопку <b>«Начать оформление»</b> ниже.\n\n"
         "Сначала вы добавите все заказы, а затем укажете общие данные для отправки.",
+        parse_mode="HTML",
         reply_markup=main_menu(is_manager)
     )
 
@@ -44,7 +45,8 @@ async def cmd_start(message: Message):
 async def cmd_menu(message: Message):
     is_manager = message.from_user.id in MANAGER_IDS
     await message.answer(
-        "👋 **Главное меню**\n\nВыберите действие:",
+        "👋 <b>Главное меню</b>\n\nВыберите действие:",
+        parse_mode="HTML",
         reply_markup=main_menu(is_manager)
     )
 
@@ -53,8 +55,8 @@ async def cmd_menu(message: Message):
 async def cmd_help(message: Message):
     is_manager = message.from_user.id in MANAGER_IDS
     await message.answer(
-        "❓ **Помощь**\n\n"
-        "**Для клиентов:**\n"
+        "❓ <b>Помощь</b>\n\n"
+        "<b>Для клиентов:</b>\n"
         "1. Нажмите «Оформить заказ»\n"
         "2. Введите номер заказа\n"
         "3. Введите сумму (кратную 1200) или 0, если заказ оплачен бонусами\n"
@@ -62,9 +64,10 @@ async def cmd_help(message: Message):
         "5. Добавьте ещё заказы или завершите\n"
         "6. Укажите общие данные для отправки\n"
         "7. Перейдите по ссылке для оплаты\n\n"
-        "**Для менеджеров:**\n"
+        "<b>Для менеджеров:</b>\n"
         "• «Создать ссылку» — сгенерировать ссылку для оплаты\n"
         "• «Проверить оплату» — узнать статус платежа",
+        parse_mode="HTML",
         reply_markup=main_menu(is_manager)
     )
 
@@ -73,8 +76,8 @@ async def cmd_help(message: Message):
 async def callback_help(callback: CallbackQuery):
     is_manager = callback.from_user.id in MANAGER_IDS
     await callback.message.edit_text(
-        "❓ **Помощь**\n\n"
-        "**Для клиентов:**\n"
+        "❓ <b>Помощь</b>\n\n"
+        "<b>Для клиентов:</b>\n"
         "1. Нажмите «Оформить заказ»\n"
         "2. Введите номер заказа\n"
         "3. Введите сумму (кратную 1200) или 0, если заказ оплачен бонусами\n"
@@ -82,9 +85,10 @@ async def callback_help(callback: CallbackQuery):
         "5. Добавьте ещё заказы или завершите\n"
         "6. Укажите общие данные для отправки\n"
         "7. Перейдите по ссылке для оплаты\n\n"
-        "**Для менеджеров:**\n"
+        "<b>Для менеджеров:</b>\n"
         "• «Создать ссылку» — сгенерировать ссылку для оплаты\n"
         "• «Проверить оплату» — узнать статус платежа",
+        parse_mode="HTML",
         reply_markup=main_menu(is_manager)
     )
     await callback.answer()
@@ -93,9 +97,10 @@ async def callback_help(callback: CallbackQuery):
 @router.callback_query(F.data == "client_order")
 async def start_order(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
-        "📝 **Введите номер вашего заказа**\n\n"
+        "📝 <b>Введите номер вашего заказа</b>\n\n"
         "Например: 123456789\n\n"
         "Вы можете найти номер на странице с подтверждением заказа.",
+        parse_mode="HTML",
         reply_markup=None
     )
     await state.set_state(OrderForm.waiting_order_number)
@@ -107,18 +112,20 @@ async def process_order_number(message: Message, state: FSMContext):
     order = message.text.strip()
     if not order.isdigit():
         await message.answer(
-            "❌ **Номер заказа должен содержать только цифры.**\n\n"
+            "❌ <b>Номер заказа должен содержать только цифры.</b>\n\n"
             "Пожалуйста, введите номер заказа ещё раз (например: 123456789).",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=False)
         )
         return
 
     await state.update_data(temp_order_number=order)
     await message.answer(
-        "💰 **Введите сумму к оплате (в рублях)**\n\n"
+        "💰 <b>Введите сумму к оплате (в рублях)</b>\n\n"
         "Сумма должна быть кратна 1200.\n"
-        "Если заказ уже оплачен бонусами, введите **0**.\n"
+        "Если заказ уже оплачен бонусами, введите <b>0</b>.\n"
         "Или выберите один из вариантов ниже:",
+        parse_mode="HTML",
         reply_markup=order_amount_keyboard([2400, 4800, 6000, 12000, 24000])
     )
     await state.set_state(OrderForm.waiting_amount)
@@ -128,8 +135,9 @@ async def process_order_number(message: Message, state: FSMContext):
 async def process_amount_button(callback: CallbackQuery, state: FSMContext):
     if callback.data == "amount_custom":
         await callback.message.edit_text(
-            "✏️ **Введите свою сумму в рублях**\n\n"
-            "Сумма должна быть кратна 1200, или 0 для оплаты бонусами."
+            "✏️ <b>Введите свою сумму в рублях</b>\n\n"
+            "Сумма должна быть кратна 1200, или 0 для оплаты бонусами.",
+            parse_mode="HTML"
         )
         await callback.answer()
         return
@@ -137,8 +145,9 @@ async def process_amount_button(callback: CallbackQuery, state: FSMContext):
     amount = int(callback.data.split("_")[1])
     await state.update_data(temp_amount=amount)
     await callback.message.edit_text(
-        "👤 **Введите ФИО для этого заказа:**\n"
-        "Например: Иванов Иван Иванович"
+        "👤 <b>Введите ФИО для этого заказа:</b>\n"
+        "Например: Иванов Иван Иванович",
+        parse_mode="HTML"
     )
     await state.set_state(OrderForm.waiting_client_name)
     await callback.answer()
@@ -150,25 +159,27 @@ async def process_amount_manual(message: Message, state: FSMContext):
         amount = int(message.text.replace(" ", "").replace(",", ""))
         if amount < 0:
             raise ValueError
-        # 0 — разрешено (оплата бонусами), для остальных проверяем кратность
         if amount != 0 and amount % 1200 != 0:
             await message.answer(
-                "❌ **Ошибка!**\n\n"
+                "❌ <b>Ошибка!</b>\n\n"
                 "Сумма должна быть кратна 1200 ₽, или 0 для оплаты бонусами.\n"
-                "Пожалуйста, введите корректную сумму."
+                "Пожалуйста, введите корректную сумму.",
+                parse_mode="HTML"
             )
             return
         await state.update_data(temp_amount=amount)
         await message.answer(
-            "👤 **Введите ФИО заказчика (получателя) для этого заказа:**\n"
-            "Например: Иванов Иван Иванович"
+            "👤 <b>Введите ФИО заказчика (получателя) для этого заказа:</b>\n"
+            "Например: Иванов Иван Иванович",
+            parse_mode="HTML"
         )
         await state.set_state(OrderForm.waiting_client_name)
     except ValueError:
         await message.answer(
-            "❌ **Ошибка!**\n\n"
+            "❌ <b>Ошибка!</b>\n\n"
             "Пожалуйста, введите корректное число.\n"
-            "Например: 1200, 2400, 6000 (или 0 для оплаченного заказа)"
+            "Например: 1200, 2400, 6000 (или 0 для оплаченного заказа)",
+            parse_mode="HTML"
         )
 
 
@@ -176,7 +187,10 @@ async def process_amount_manual(message: Message, state: FSMContext):
 async def process_client_name(message: Message, state: FSMContext):
     name = message.text.strip()
     if len(name.split()) < 2:
-        await message.answer("❌ Пожалуйста, введите полное ФИО (минимум два слова).")
+        await message.answer(
+            "❌ Пожалуйста, введите полное ФИО (минимум два слова).",
+            parse_mode="HTML"
+        )
         return
 
     data = await state.get_data()
@@ -196,10 +210,11 @@ async def process_client_name(message: Message, state: FSMContext):
     builder.adjust(1)
 
     await message.answer(
-        f"📦 **Заказ {data['temp_order_number']} добавлен!**\n\n"
-        f"💰 Сумма: {temp_amount:,} ₽" + (" (оплачен бонусами)" if temp_amount == 0 else "") + "\n"
+        f"📦 <b>Заказ {data['temp_order_number']} добавлен!</b>\n\n"
+        f"💰 Сумма: {temp_amount:,} ₽" + (" <i>(оплачен бонусами)</i>" if temp_amount == 0 else "") + "\n"
         f"👤 ФИО заказа: {name}\n\n"
         f"Хотите добавить ещё один заказ?",
+        parse_mode="HTML",
         reply_markup=builder.as_markup()
     )
     await state.set_state(OrderForm.waiting_more_orders)
@@ -208,8 +223,9 @@ async def process_client_name(message: Message, state: FSMContext):
 @router.callback_query(F.data == "add_more_order", OrderForm.waiting_more_orders)
 async def add_more_order(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
-        "📝 **Введите номер следующего заказа:**\n\n"
-        "Например: 123456789"
+        "📝 <b>Введите номер следующего заказа:</b>\n\n"
+        "Например: 123456789",
+        parse_mode="HTML"
     )
     await state.set_state(OrderForm.waiting_order_number_group)
     await callback.answer()
@@ -220,14 +236,16 @@ async def process_order_number_group(message: Message, state: FSMContext):
     order_number = message.text.strip()
     if not order_number.isdigit():
         await message.answer(
-            "❌ **Номер заказа должен содержать только цифры.**\n\n"
-            "Пожалуйста, введите номер заказа ещё раз."
+            "❌ <b>Номер заказа должен содержать только цифры.</b>\n\n"
+            "Пожалуйста, введите номер заказа ещё раз.",
+            parse_mode="HTML"
         )
         return
     await state.update_data(temp_order_number=order_number)
     await message.answer(
-        "💰 **Введите сумму для этого заказа (в рублях):**\n\n"
-        "Сумма должна быть кратна 1200, или 0 для оплаты бонусами."
+        "💰 <b>Введите сумму для этого заказа (в рублях):</b>\n\n"
+        "Сумма должна быть кратна 1200, или 0 для оплаты бонусами.",
+        parse_mode="HTML"
     )
     await state.set_state(OrderForm.waiting_amount_group)
 
@@ -240,22 +258,25 @@ async def process_amount_group(message: Message, state: FSMContext):
             raise ValueError
         if amount != 0 and amount % 1200 != 0:
             await message.answer(
-                "❌ **Ошибка!**\n\n"
+                "❌ <b>Ошибка!</b>\n\n"
                 "Сумма должна быть кратна 1200 ₽, или 0 для оплаты бонусами.\n"
-                "Пожалуйста, введите корректную сумму."
+                "Пожалуйста, введите корректную сумму.",
+                parse_mode="HTML"
             )
             return
         await state.update_data(temp_amount=amount)
         await message.answer(
-            "👤 **Введите ФИО заказчика для этого заказа:**\n"
-            "Например: Иванов Иван Иванович"
+            "👤 <b>Введите ФИО заказчика для этого заказа:</b>\n"
+            "Например: Иванов Иван Иванович",
+            parse_mode="HTML"
         )
         await state.set_state(OrderForm.waiting_client_name_group)
     except ValueError:
         await message.answer(
-            "❌ **Ошибка!**\n\n"
+            "❌ <b>Ошибка!</b>\n\n"
             "Пожалуйста, введите корректное число.\n"
-            "Например: 1200, 2400, 6000 (или 0 для оплаченного заказа)"
+            "Например: 1200, 2400, 6000 (или 0 для оплаченного заказа)",
+            parse_mode="HTML"
         )
 
 
@@ -263,7 +284,10 @@ async def process_amount_group(message: Message, state: FSMContext):
 async def process_client_name_group(message: Message, state: FSMContext):
     name = message.text.strip()
     if len(name.split()) < 2:
-        await message.answer("❌ Пожалуйста, введите полное ФИО (минимум два слова).")
+        await message.answer(
+            "❌ Пожалуйста, введите полное ФИО (минимум два слова).",
+            parse_mode="HTML"
+        )
         return
 
     data = await state.get_data()
@@ -283,10 +307,11 @@ async def process_client_name_group(message: Message, state: FSMContext):
     builder.adjust(1)
 
     await message.answer(
-        f"📦 **Заказ {data['temp_order_number']} добавлен!**\n\n"
-        f"💰 Сумма: {temp_amount:,} ₽" + (" (оплачен бонусами)" if temp_amount == 0 else "") + "\n"
+        f"📦 <b>Заказ {data['temp_order_number']} добавлен!</b>\n\n"
+        f"💰 Сумма: {temp_amount:,} ₽" + (" <i>(оплачен бонусами)</i>" if temp_amount == 0 else "") + "\n"
         f"👤 ФИО заказа: {name}\n\n"
         f"Хотите добавить ещё один заказ?",
+        parse_mode="HTML",
         reply_markup=builder.as_markup()
     )
     await state.set_state(OrderForm.waiting_more_orders)
@@ -301,20 +326,20 @@ async def finish_orders(callback: CallbackQuery, state: FSMContext):
         await state.clear()
         return
 
-    # Формируем сводку с пометками о бонусах
     orders_text = "\n".join([
         f"• Заказ {o['order_number']} – {o['amount_rub']:,} ₽ (ФИО: {o['client_name']})" +
-        (" (оплачен с бонусного кошелька)" if o.get('is_paid_by_bonus') else "")
+        (" <i>(оплачен с бонусного кошелька)</i>" if o.get('is_paid_by_bonus') else "")
         for o in orders_list
     ])
     total_amount = sum(o["amount_rub"] for o in orders_list)
 
     await callback.message.edit_text(
-        f"📦 **Сводка заказов**\n\n"
+        f"📦 <b>Сводка заказов</b>\n\n"
         f"{orders_text}\n\n"
-        f"💰 **Общая сумма к оплате:** {total_amount:,} ₽\n\n"
+        f"💰 <b>Общая сумма к оплате:</b> {total_amount:,} ₽\n\n"
         f"Теперь укажите общие данные для отправки.\n"
-        f"Введите **ФИО получателя** (на кого оформляется доставка):"
+        f"Введите <b>ФИО получателя</b> (на кого оформляется доставка):",
+        parse_mode="HTML"
     )
     await state.set_state(OrderForm.waiting_recipient_name)
     await callback.answer()
@@ -324,12 +349,16 @@ async def finish_orders(callback: CallbackQuery, state: FSMContext):
 async def process_recipient_name(message: Message, state: FSMContext):
     name = message.text.strip()
     if len(name.split()) < 2:
-        await message.answer("❌ Пожалуйста, введите полное ФИО (минимум два слова).")
+        await message.answer(
+            "❌ Пожалуйста, введите полное ФИО (минимум два слова).",
+            parse_mode="HTML"
+        )
         return
     await state.update_data(recipient_name=name)
     await message.answer(
-        "📍 **Введите адрес доставки СДЭК:**\n"
-        "Например: г. Москва, ул. Тверская, д.5, кв.12"
+        "📍 <b>Введите адрес доставки СДЭК:</b>\n"
+        "Например: г. Москва, ул. Тверская, д.5, кв.12",
+        parse_mode="HTML"
     )
     await state.set_state(OrderForm.waiting_recipient_address)
 
@@ -339,8 +368,9 @@ async def process_recipient_address(message: Message, state: FSMContext):
     address = message.text.strip()
     await state.update_data(recipient_address=address)
     await message.answer(
-        "📱 **Введите номер телефона получателя:**\n"
-        "Например: 79991234567"
+        "📱 <b>Введите номер телефона получателя:</b>\n"
+        "Например: 79991234567",
+        parse_mode="HTML"
     )
     await state.set_state(OrderForm.waiting_recipient_phone)
 
@@ -349,7 +379,10 @@ async def process_recipient_address(message: Message, state: FSMContext):
 async def process_recipient_phone(message: Message, state: FSMContext):
     phone = message.text.strip()
     if len(phone) < 10 or not any(char.isdigit() for char in phone):
-        await message.answer("❌ Номер телефона слишком короткий или содержит недопустимые символы. Введите ещё раз.")
+        await message.answer(
+            "❌ Номер телефона слишком короткий или содержит недопустимые символы. Введите ещё раз.",
+            parse_mode="HTML"
+        )
         return
     await state.update_data(recipient_phone=phone)
 
@@ -362,16 +395,13 @@ async def process_recipient_phone(message: Message, state: FSMContext):
     recipient_address = data["recipient_address"]
     recipient_phone = data["recipient_phone"]
 
-    # Формируем текст с пометками
     orders_text = "\n".join([
         f"• Заказ {o['order_number']} – {o['amount_rub']:,} ₽ (ФИО: {o['client_name']})" +
-        (" (оплачен с бонусного кошелька)" if o.get('is_paid_by_bonus') else "")
+        (" <i>(оплачен с бонусного кошелька)</i>" if o.get('is_paid_by_bonus') else "")
         for o in orders_list
     ])
 
-    # Если общая сумма = 0, не создаём платёж
     if total_amount == 0:
-        # Сохраняем в БД без платежа (помечаем как групповой, сумма 0)
         save_invoice({
             "payment_id": f"BONUS_{int(datetime.now().timestamp())}",
             "amount": 0,
@@ -388,27 +418,34 @@ async def process_recipient_phone(message: Message, state: FSMContext):
             "orders_data": json.dumps(orders_list, ensure_ascii=False)
         })
 
-        # Уведомление клиенту
         await message.answer(
-            f"✅ **Все заказы уже оплачены бонусами!**\n\n"
-            f"📦 **Заказы:**\n{orders_text}\n\n"
-            f"📍 **Адрес доставки:** {recipient_address}\n"
-            f"👤 **Получатель:** {recipient_name}\n"
-            f"📱 **Телефон:** {recipient_phone}\n\n"
-            f"Спасибо за доверие! Менеджер получит уведомление."
+            f"✅ <b>Все заказы уже оплачены бонусами!</b>\n\n"
+            f"📦 Заказы:\n{orders_text}\n\n"
+            f"📍 Адрес доставки: {recipient_address}\n"
+            f"👤 Получатель: {recipient_name}\n"
+            f"📱 Телефон: {recipient_phone}\n\n"
+            f"Спасибо за доверие! Менеджер получит уведомление.",
+            parse_mode="HTML"
         )
 
-        # Уведомление менеджеру
+        builder = InlineKeyboardBuilder()
+        builder.button(text="📦 Отправить трек", callback_data="track_none")
+        builder.button(text="📢 Уведомить", callback_data="notify_none")
+        builder.button(text="🏠 Главное меню", callback_data="manager_back")
+        builder.adjust(2, 1)
+
         for manager_id in MANAGER_IDS:
             try:
                 await message.bot.send_message(
                     manager_id,
-                    f"✅ **ЗАКАЗЫ ОПЛАЧЕНЫ БОНУСАМИ!**\n\n"
-                    f"📦 **Заказы:**\n{orders_text}\n\n"
-                    f"📍 **Адрес:** {recipient_address}\n"
-                    f"👤 **Получатель:** {recipient_name}\n"
-                    f"📱 **Телефон:** {recipient_phone}\n"
-                    f"👤 **Инициатор:** @{client_username or 'без username'} (ID: {client_id})"
+                    f"<b>✅ ЗАКАЗЫ ОПЛАЧЕНЫ БОНУСАМИ!</b>\n\n"
+                    f"📦 Заказы:\n{orders_text}\n\n"
+                    f"📍 Адрес: {recipient_address}\n"
+                    f"👤 Получатель: {recipient_name}\n"
+                    f"📱 Телефон: {recipient_phone}\n"
+                    f"👤 Инициатор: @{client_username or 'без username'} (ID: {client_id})",
+                    parse_mode="HTML",
+                    reply_markup=builder.as_markup()
                 )
             except Exception:
                 pass
@@ -416,7 +453,6 @@ async def process_recipient_phone(message: Message, state: FSMContext):
         await state.clear()
         return
 
-    # Если есть положительная сумма – создаём платёж
     amount_kopecks = total_amount * 100
     payment_id_str = f"GROUP_{int(datetime.now().timestamp())}"
 
@@ -452,13 +488,13 @@ async def process_recipient_phone(message: Message, state: FSMContext):
 
     except Exception as e:
         await message.answer(
-            f"❌ **Ошибка при создании платежа**\n\n"
-            f"Текст ошибки: {str(e)}"
+            f"❌ <b>Ошибка при создании платежа</b>\n\n"
+            f"Текст ошибки: {str(e)}",
+            parse_mode="HTML"
         )
         await state.clear()
         return
 
-    # Сохраняем в БД
     save_invoice({
         "payment_id": payment_id_str,
         "amount": amount_kopecks,
@@ -475,7 +511,6 @@ async def process_recipient_phone(message: Message, state: FSMContext):
         "orders_data": json.dumps(orders_list, ensure_ascii=False)
     })
 
-    # Клавиатура после получения ссылки
     builder = InlineKeyboardBuilder()
     builder.button(text="🔄 Оформить новый заказ", callback_data="client_order")
     builder.button(text="🏠 Главное меню", callback_data="main_menu")
@@ -483,26 +518,28 @@ async def process_recipient_phone(message: Message, state: FSMContext):
 
     if sbp_available:
         await message.answer(
-            f"🔗 **Ссылка для оплаты {len(orders_list)} заказов:**\n{qr_data}\n\n"
-            f"💰 **Общая сумма:** {total_amount:,} ₽\n\n"
-            f"📦 **Заказы:**\n{orders_text}\n\n"
-            f"📍 **Адрес:** {recipient_address}\n"
-            f"👤 **Получатель:** {recipient_name}\n"
-            f"📱 **Телефон:** {recipient_phone}\n\n"
-            f"_Автоматически поступит на счёт после оплаты._",
+            f"🔗 <b>Ссылка для оплаты {len(orders_list)} заказов:</b>\n{qr_data}\n\n"
+            f"💰 <b>Общая сумма:</b> {total_amount:,} ₽\n\n"
+            f"📦 Заказы:\n{orders_text}\n\n"
+            f"📍 Адрес: {recipient_address}\n"
+            f"👤 Получатель: {recipient_name}\n"
+            f"📱 Телефон: {recipient_phone}\n\n"
+            f"<i>Автоматически поступит на счёт после оплаты.</i>",
+            parse_mode="HTML",
             reply_markup=builder.as_markup()
         )
     else:
         await message.answer(
-            f"⚠️ **СБП временно недоступна.**\n"
+            f"⚠️ <b>СБП временно недоступна.</b>\n"
             f"Используйте обычную ссылку:\n\n"
             f"💳 {payment_url}\n"
-            f"💰 **Общая сумма:** {total_amount:,} ₽\n\n"
-            f"📦 **Заказы:**\n{orders_text}\n\n"
-            f"📍 **Адрес:** {recipient_address}\n"
-            f"👤 **Получатель:** {recipient_name}\n"
-            f"📱 **Телефон:** {recipient_phone}\n\n"
-            f"_Оплата по этой ссылке также автоматически поступит на счёт._",
+            f"💰 <b>Общая сумма:</b> {total_amount:,} ₽\n\n"
+            f"📦 Заказы:\n{orders_text}\n\n"
+            f"📍 Адрес: {recipient_address}\n"
+            f"👤 Получатель: {recipient_name}\n"
+            f"📱 Телефон: {recipient_phone}\n\n"
+            f"<i>Оплата по этой ссылке также автоматически поступит на счёт.</i>",
+            parse_mode="HTML",
             reply_markup=builder.as_markup()
         )
 
@@ -514,7 +551,8 @@ async def main_menu_callback(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     is_manager = callback.from_user.id in MANAGER_IDS
     await callback.message.edit_text(
-        "👋 **Главное меню**\n\nВыберите действие:",
+        "👋 <b>Главное меню</b>\n\nВыберите действие:",
+        parse_mode="HTML",
         reply_markup=main_menu(is_manager)
     )
     await callback.answer()
