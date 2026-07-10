@@ -39,22 +39,7 @@ async def tbank_webhook_handler(request: Request):
     print(data)
 
     try:
-        # === Проверка подписи ===
         if not verify_webhook_signature(data):
-            # Отправляем менеджеру уведомление об ошибке подписи
-            error_msg = (
-                "❌ Ошибка: подпись вебхука не прошла проверку.\n\n"
-                f"📦 Данные вебхука:\n{json.dumps(data, indent=2)}\n\n"
-                "💡 Возможные причины:\n"
-                "- Неверный секретный ключ (TBANK_SECRET_KEY)\n"
-                "- Изменился алгоритм формирования подписи\n"
-                "- В вебхук пришли новые поля, которые мы не учитываем"
-            )
-            for manager_id in MANAGER_IDS:
-                try:
-                    await bot.send_message(manager_id, error_msg)
-                except Exception:
-                    pass
             print("❌ Подпись не прошла проверку")
             return {"status": "unauthorized"}, 401
 
@@ -169,29 +154,18 @@ async def tbank_webhook_handler(request: Request):
                         except Exception:
                             pass
                 else:
-                    # Если обновление статуса не удалось
+                    # Только если обновление не удалось – отправить менеджеру
                     for manager_id in MANAGER_IDS:
                         try:
                             await bot.send_message(
                                 manager_id,
-                                f"⚠️ Не удалось обновить статус заказа {order_id} в БД.\n"
-                                f"Платёж подтверждён, но статус не изменился. Проверьте вручную."
+                                f"⚠️ Не удалось обновить статус заказа {order_id} в БД."
                             )
                         except Exception:
                             pass
             else:
-                if invoice:
-                    # Заказ уже оплачен
-                    for manager_id in MANAGER_IDS:
-                        try:
-                            await bot.send_message(
-                                manager_id,
-                                f"ℹ️ Получен повторный вебхук для уже оплаченного заказа {order_id}."
-                            )
-                        except Exception:
-                            pass
-                else:
-                    # Заказ не найден
+                # Если заказ не найден – для новых платежей это критично
+                if invoice is None:
                     for manager_id in MANAGER_IDS:
                         try:
                             await bot.send_message(
@@ -202,25 +176,17 @@ async def tbank_webhook_handler(request: Request):
                             )
                         except Exception:
                             pass
+                # Если заказ уже оплачен – просто игнорируем
         else:
-            # Статус не CONFIRMED или нет OrderId – просто игнорируем, но для диагностики можно отправить
-            if status not in ["AUTHORIZED", "CONFIRMED"]:
-                for manager_id in MANAGER_IDS:
-                    try:
-                        await bot.send_message(
-                            manager_id,
-                            f"ℹ️ Получен вебхук со статусом {status} для заказа {order_id}. (Не CONFIRMED, игнорируем)"
-                        )
-                    except Exception:
-                        pass
+            # Игнорируем все не-CONFIRMED вебхуки (AUTHORIZED и другие)
+            pass
 
     except Exception as e:
-        # === Обработка любых других ошибок ===
+        # Отправляем только критическую ошибку
         error_msg = (
             f"❌ КРИТИЧЕСКАЯ ОШИБКА при обработке вебхука:\n\n"
             f"Текст ошибки: {str(e)}\n\n"
-            f"📦 Данные вебхука:\n{json.dumps(data, indent=2)}\n\n"
-            f"Пожалуйста, проверьте логи и исправьте проблему."
+            f"Данные вебхука:\n{json.dumps(data, indent=2)}"
         )
         for manager_id in MANAGER_IDS:
             try:
