@@ -14,8 +14,8 @@ TBANK_API_URL = "https://securepay.tinkoff.ru/v2/"
 # Для тестового режима (раскомментировать при необходимости):
 # TBANK_API_URL = "https://rest-api-test.tinkoff.ru/v2/"
 
-# Отключаем проверку SSL-сертификатов (временное решение для хостинга)
-SSL_VERIFY = False
+# Проверка SSL включена (используется системный набор сертификатов)
+SSL_VERIFY = True  # <-- изменено с False на True
 
 
 def generate_token(params: Dict[str, Any], password: str) -> Tuple[str, str]:
@@ -88,7 +88,7 @@ def create_payment(
             f"{TBANK_API_URL}Init",
             json=payload,
             timeout=15,
-            verify=SSL_VERIFY
+            verify=SSL_VERIFY  # <-- теперь True
         )
         response.raise_for_status()
         data = response.json()
@@ -147,7 +147,7 @@ def get_qr(
             f"{TBANK_API_URL}GetQr",
             json=payload,
             timeout=15,
-            verify=SSL_VERIFY
+            verify=SSL_VERIFY  # <-- теперь True
         )
         response.raise_for_status()
         data = response.json()
@@ -195,7 +195,7 @@ def check_payment_status(order_id: str) -> str:
             f"{TBANK_API_URL}GetState",
             json=payload,
             timeout=10,
-            verify=SSL_VERIFY
+            verify=SSL_VERIFY  # <-- теперь True
         )
         response.raise_for_status()
         data = response.json()
