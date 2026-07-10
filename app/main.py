@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 
 from fastapi import FastAPI, Request
 from aiogram import Bot, Dispatcher
@@ -31,6 +32,18 @@ async def telegram_webhook_handler(request: Request):
     update = Update(**update_data)
     await dp.feed_update(bot, update)
     return {"status": "ok"}
+
+
+def format_paid_at(paid_at_str):
+    """Преобразует UTC время из БД в московское (UTC+3) и форматирует"""
+    if not paid_at_str:
+        return 'неизвестно'
+    try:
+        utc_time = datetime.strptime(paid_at_str, '%Y-%m-%d %H:%M:%S')
+        msk_time = utc_time + timedelta(hours=3)
+        return msk_time.strftime('%Y-%m-%d %H:%M:%S')
+    except:
+        return paid_at_str
 
 
 async def tbank_webhook_handler(request: Request):
@@ -72,6 +85,8 @@ async def tbank_webhook_handler(request: Request):
                         else:
                             initiator_text = f"👤 <b>Инициатор:</b> ID: {initiator_tg_id}\n🔗 <a href='tg://user?id={initiator_tg_id}'>Написать инициатору</a>"
 
+                    paid_at_display = format_paid_at(updated.get('paid_at'))
+
                     if is_group:
                         orders_data = updated.get("orders_data")
                         try:
@@ -93,7 +108,7 @@ async def tbank_webhook_handler(request: Request):
                             f"👤 <b>Получатель:</b> {updated.get('client_name') or 'Не указан'}\n"
                             f"📱 <b>Телефон:</b> {updated.get('client_phone') or 'Не указан'}\n"
                             f"{initiator_text}\n" if initiator_text else ""
-                            f"🕒 <b>Время оплаты:</b> {updated.get('paid_at') or 'неизвестно'}\n"
+                            f"🕒 <b>Время оплаты:</b> {paid_at_display}\n"
                             f"🆔 <b>Payment ID:</b> {order_id[:16]}...\n\n"
                             f"⚡️ Готовьте к отправке!"
                         )
@@ -107,7 +122,7 @@ async def tbank_webhook_handler(request: Request):
                             f"👤 <b>ФИО получателя:</b> {updated.get('client_name') or 'Не указано'}\n"
                             f"📱 <b>Телефон:</b> {updated.get('client_phone') or 'Не указан'}\n"
                             f"{initiator_text}\n" if initiator_text else ""
-                            f"🕒 <b>Время оплаты:</b> {updated.get('paid_at') or 'неизвестно'}\n"
+                            f"🕒 <b>Время оплаты:</b> {paid_at_display}\n"
                             f"🆔 <b>Payment ID:</b> {order_id[:16]}...\n\n"
                             f"⚡️ Готовьте к отправке!"
                         )
@@ -120,7 +135,7 @@ async def tbank_webhook_handler(request: Request):
                             f"📍 <b>Адрес:</b> {updated.get('delivery_address') or 'Не указан'}\n"
                             f"👤 <b>ФИО:</b> {updated.get('client_name') or 'Не указано'}\n"
                             f"📱 <b>Телефон:</b> {updated.get('client_phone') or 'Не указан'}\n"
-                            f"🕒 <b>Время оплаты:</b> {updated.get('paid_at') or 'неизвестно'}\n"
+                            f"🕒 <b>Время оплаты:</b> {paid_at_display}\n"
                             f"🆔 <b>Payment ID:</b> {order_id[:16]}...\n\n"
                             f"⚡️ Готовьте к отправке!"
                         )
@@ -141,14 +156,12 @@ async def tbank_webhook_handler(request: Request):
                         try:
                             amount_rub = updated['amount_rub']
                             if not is_group and order_number is not None:
-                                # Одиночный заказ
                                 client_message = (
                                     f"✅ Оплата по заявке №<b>{order_number}</b> в размере <b>{amount_rub:,}</b> рублей поступила на счёт.\n\n"
                                     f"Ожидайте подтверждения на сайте в рабочее время и отправки посылки.\n\n"
                                     f"Спасибо за доверие!"
                                 )
                             elif is_group:
-                                # Групповой заказ
                                 count = len(orders_list) if 'orders_list' in locals() else 0
                                 client_message = (
                                     f"✅ Оплата по заявке из <b>{count}</b> заказов в размере <b>{amount_rub:,}</b> рублей поступила на счёт.\n\n"
@@ -156,7 +169,6 @@ async def tbank_webhook_handler(request: Request):
                                     f"Спасибо за доверие!"
                                 )
                             else:
-                                # Ручная ссылка – используем комментарий
                                 comment = updated.get("description", "ручная ссылка")
                                 client_message = (
                                     f"✅ Оплата по заявке на <b>{comment}</b> в размере <b>{amount_rub:,}</b> рублей поступила на счёт.\n\n"
@@ -171,7 +183,6 @@ async def tbank_webhook_handler(request: Request):
                         except Exception:
                             pass
                 else:
-                    # Только если обновление не удалось – отправить менеджеру
                     for manager_id in MANAGER_IDS:
                         try:
                             await bot.send_message(
@@ -183,23 +194,24 @@ async def tbank_webhook_handler(request: Request):
             else:
                 # Если заказ не найден – для новых платежей это критично
                 if invoice is None:
-                    for manager_id in MANAGER_IDS:
-                        try:
-                            await bot.send_message(
-                                manager_id,
-                                f"❌ Заказ с payment_id = {order_id} не найден в БД.\n"
-                                f"Платёж подтверждён, но ссылка не была создана через бота.\n"
-                                f"Проверьте вручную в личном кабинете T‑Банк."
-                            )
-                        except Exception:
-                            pass
+                    # === ЗДЕСЬ МОЖНО ВРЕМЕННО ОТКЛЮЧИТЬ УВЕДОМЛЕНИЯ (закомментировать блок ниже) ===
+                    # for manager_id in MANAGER_IDS:
+                    #     try:
+                    #         await bot.send_message(
+                    #             manager_id,
+                    #             f"❌ Заказ с payment_id = {order_id} не найден в БД.\n"
+                    #             f"Платёж подтверждён, но ссылка не была создана через бота.\n"
+                    #             f"Проверьте вручную в личном кабинете T‑Банк."
+                    #         )
+                    #     except Exception:
+                    #         pass
+                    pass
                 # Если заказ уже оплачен – просто игнорируем
         else:
             # Игнорируем все не-CONFIRMED вебхуки (AUTHORIZED и другие)
             pass
 
     except Exception as e:
-        # Отправляем только критическую ошибку
         error_msg = (
             f"❌ КРИТИЧЕСКАЯ ОШИБКА при обработке вебхука:\n\n"
             f"Текст ошибки: {str(e)}\n\n"
