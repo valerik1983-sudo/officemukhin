@@ -52,7 +52,6 @@ async def tbank_webhook_handler(request: Request):
         if invoice and invoice["status"] != "paid":
             updated = update_invoice_status(str(order_id), "paid")
             if updated:
-                # === Кнопки для менеджера ===
                 builder = InlineKeyboardBuilder()
                 builder.button(text="📦 Отправить трек", callback_data=f"track_{updated['order_number']}")
                 builder.button(text="📢 Уведомить", callback_data=f"notify_{updated['order_number']}")
@@ -64,7 +63,6 @@ async def tbank_webhook_handler(request: Request):
                 initiator_tg_id = updated.get("client_tg_id")
                 initiator_username = updated.get("client_username")
                 
-                # Формируем строку с инициатором (если есть)
                 initiator_text = ""
                 if initiator_tg_id:
                     if initiator_username:
@@ -72,9 +70,7 @@ async def tbank_webhook_handler(request: Request):
                     else:
                         initiator_text = f"👤 **Инициатор:** ID: `{initiator_tg_id}`\n🔗 [Написать инициатору](tg://user?id={initiator_tg_id})"
 
-                # === Определяем тип заказа и формируем сообщение ===
                 if is_group:
-                    # Групповой платёж
                     orders_data = updated.get("orders_data")
                     try:
                         orders_list = json.loads(orders_data) if orders_data else []
@@ -82,7 +78,8 @@ async def tbank_webhook_handler(request: Request):
                         orders_list = []
 
                     orders_text = "\n".join([
-                        f"• Заказ {o.get('order_number', '?')} – {o.get('amount_rub', 0):,} ₽ (ФИО: {o.get('client_name', 'Не указан')})"
+                        f"• Заказ {o.get('order_number', '?')} – {o.get('amount_rub', 0):,} ₽ (ФИО: {o.get('client_name', 'Не указан')})" +
+                        (" (оплачен с бонусного кошелька)" if o.get('is_paid_by_bonus') else "")
                         for o in orders_list
                     ])
 
@@ -99,7 +96,6 @@ async def tbank_webhook_handler(request: Request):
                         f"⚡️ Готовьте к отправке!"
                     )
                 elif order_number is not None:
-                    # Клиентский заказ (ORDER_...)
                     message_text = (
                         f"✅ **ДЕНЬГИ ПОСТУПИЛИ!**\n\n"
                         f"📦 **Заказ:** {order_number}\n"
@@ -114,7 +110,6 @@ async def tbank_webhook_handler(request: Request):
                         f"⚡️ Готовьте к отправке!"
                     )
                 else:
-                    # Ручная ссылка (MANUAL_...) – инициатор не показываем
                     message_text = (
                         f"✅ **ДЕНЬГИ ПОСТУПИЛИ!**\n\n"
                         f"📦 **Заказ:** Ручная ссылка\n"
@@ -128,7 +123,6 @@ async def tbank_webhook_handler(request: Request):
                         f"⚡️ Готовьте к отправке!"
                     )
 
-                # === Отправка уведомления менеджеру ===
                 for manager_id in MANAGER_IDS:
                     try:
                         await bot.send_message(
@@ -139,7 +133,6 @@ async def tbank_webhook_handler(request: Request):
                     except Exception:
                         pass
 
-                # === Уведомление клиенту ===
                 if updated.get("client_tg_id"):
                     try:
                         if is_group:
@@ -148,7 +141,6 @@ async def tbank_webhook_handler(request: Request):
                             order_text = order_number
                         else:
                             order_text = "ручная ссылка"
-
                         await bot.send_message(
                             updated["client_tg_id"],
                             f"✅ **Оплата по заявке №{order_text} поступила на счёт.**\n\n"
