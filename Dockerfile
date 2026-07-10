@@ -1,5 +1,11 @@
 FROM python:3.11-slim
 
+# Устанавливаем системные сертификаты
+RUN apt-get update && apt-get install -y ca-certificates && update-ca-certificates
+
+# Обновляем certifi (Python-пакет с сертификатами)
+RUN pip install --upgrade certifi
+
 WORKDIR /app
 
 COPY requirements.txt .
