@@ -14,6 +14,9 @@ TBANK_API_URL = "https://securepay.tinkoff.ru/v2/"
 # Для тестового режима (раскомментировать при необходимости):
 # TBANK_API_URL = "https://rest-api-test.tinkoff.ru/v2/"
 
+# Отключаем проверку SSL-сертификатов (временное решение для хостинга)
+SSL_VERIFY = False
+
 
 def generate_token(params: Dict[str, Any], password: str) -> Tuple[str, str]:
     """
@@ -88,7 +91,8 @@ def create_payment(
         response = requests.post(
             f"{TBANK_API_URL}Init",
             json=payload,
-            timeout=15
+            timeout=15,
+            verify=SSL_VERIFY   # <-- отключаем проверку SSL
         )
         response.raise_for_status()
         data = response.json()
@@ -146,7 +150,8 @@ def get_qr(
         response = requests.post(
             f"{TBANK_API_URL}GetQr",
             json=payload,
-            timeout=15
+            timeout=15,
+            verify=SSL_VERIFY   # <-- отключаем проверку SSL
         )
         response.raise_for_status()
         data = response.json()
@@ -193,7 +198,8 @@ def check_payment_status(order_id: str) -> str:
         response = requests.post(
             f"{TBANK_API_URL}GetState",
             json=payload,
-            timeout=10
+            timeout=10,
+            verify=SSL_VERIFY   # <-- отключаем проверку SSL
         )
         response.raise_for_status()
         data = response.json()
@@ -203,21 +209,23 @@ def check_payment_status(order_id: str) -> str:
 
 
 def verify_webhook_signature(data: Dict[str, Any]) -> bool:
+    """
+    Проверяет подпись вебхука от T‑Банк (входящие уведомления).
+    """
     params = data.copy()
     token = params.pop("Token", None)
     if not token:
         return False
 
+    # Добавляем пароль как поле
     params["Password"] = TBANK_SECRET_KEY
 
+    # Убираем вложенные объекты и пустые значения
     filtered = {}
     for k, v in params.items():
         if v is None or v == "" or isinstance(v, dict):
             continue
-        if isinstance(v, bool):
-            filtered[k] = str(v).lower()
-        else:
-            filtered[k] = v
+        filtered[k] = v
 
     sorted_keys = sorted(filtered.keys())
     data_string = "".join(str(filtered[k]) for k in sorted_keys)
