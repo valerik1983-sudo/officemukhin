@@ -22,7 +22,7 @@ router = Router(name="manager")
 # === FSM ===
 class ManagerLinkForm(StatesGroup):
     waiting_amount = State()
-    waiting_comment = State()  # комментарий для внутреннего учёта
+    waiting_comment = State()
 
 
 class ManagerTrackForm(StatesGroup):
@@ -46,7 +46,8 @@ async def cmd_menu(message: Message):
         await message.answer("⛔️ Нет доступа")
         return
     await message.answer(
-        "👋 **Главное меню**\n\nВыберите действие:",
+        "👋 <b>Главное меню</b>\n\nВыберите действие:",
+        parse_mode="HTML",
         reply_markup=main_menu(is_manager=True)
     )
 
@@ -68,12 +69,12 @@ async def create_link(message: Message, creator_id: int, amount_rub: int, commen
         payment_result = create_payment(
             amount=amount_rub * 100,
             order_id=order_id,
-            description=bank_description,  # для банка
+            description=bank_description,
             success_url=f"https://t.me/{bot_username}",
             fail_url=f"https://t.me/{bot_username}",
             client_tg_id=creator_id
         )
-        payment_id = payment_result["payment_id"]
+        payment_id = payment_result["payment_id"]  # числовой PaymentId
         payment_url = payment_result["payment_url"]
 
         try:
@@ -98,8 +99,9 @@ async def create_link(message: Message, creator_id: int, amount_rub: int, commen
         return
 
     # Сохраняем в БД: комментарий кладём в description
+    # ВАЖНО: payment_id = order_id (строка MANUAL_...), а не числовой PaymentId
     save_invoice({
-        "payment_id": order_id,
+        "payment_id": order_id,                # строка
         "amount": amount_rub * 100,
         "amount_rub": amount_rub,
         "order_number": None,
@@ -107,7 +109,9 @@ async def create_link(message: Message, creator_id: int, amount_rub: int, commen
         "client_tg_id": creator_id if creator_id else None,
         "client_username": None,
         "creator_tg_id": creator_id,
-        "description": comment  # здесь хранится комментарий менеджера
+        "description": comment,                # комментарий менеджера
+        "is_group": 0,
+        "orders_data": None
     })
 
     from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -118,20 +122,22 @@ async def create_link(message: Message, creator_id: int, amount_rub: int, commen
 
     if sbp_available:
         await message.answer(
-            f"🔗 **Ссылка для оплаты**\n"
-            f"💰 {amount_rub:,} ₽\n\n"
-            f"📝 **Ваш комментарий:** {comment}\n"
+            f"🔗 <b>Ссылка для оплаты</b>\n"
+            f"💰 <b>Сумма:</b> {amount_rub:,} ₽\n\n"
+            f"📝 <b>Ваш комментарий:</b> {comment}\n"
             f"🔗 {qr_data}\n\n"
             f"_Ссылка откроется автоматически при нажатии._",
+            parse_mode="HTML",
             reply_markup=builder.as_markup()
         )
     else:
         await message.answer(
-            f"⚠️ **СБП временно недоступна.**\n"
+            f"⚠️ <b>СБП временно недоступна.</b>\n"
             f"Используйте обычную ссылку:\n\n"
             f"💳 {payment_url}\n"
-            f"💰 {amount_rub:,} ₽\n"
-            f"📝 **Ваш комментарий:** {comment}",
+            f"💰 <b>Сумма:</b> {amount_rub:,} ₽\n"
+            f"📝 <b>Ваш комментарий:</b> {comment}",
+            parse_mode="HTML",
             reply_markup=builder.as_markup()
         )
 
@@ -140,7 +146,7 @@ async def create_link(message: Message, creator_id: int, amount_rub: int, commen
 @router.message(Command("link"))
 async def manager_link_command(message: Message):
     if not await is_manager(message.from_user.id):
-        await message.answer("⛔️ **Нет доступа**")
+        await message.answer("⛔️ <b>Нет доступа</b>", parse_mode="HTML")
         return
 
     try:
@@ -153,6 +159,7 @@ async def manager_link_command(message: Message):
             await message.answer(
                 "❌ Сумма должна быть кратна 1200 ₽.\n"
                 "Пожалуйста, введите сумму, кратную 1200 (например: 1200, 2400, 3600...)",
+                parse_mode="HTML",
                 reply_markup=main_menu(is_manager=True)
             )
             return
@@ -163,8 +170,9 @@ async def manager_link_command(message: Message):
     except:
         await message.answer(
             "❌ Неверный формат\n\n"
-            "Использование: `/link [сумма] [комментарий]`\n"
+            "Использование: <code>/link [сумма] [комментарий]</code>\n"
             "Сумма должна быть кратна 1200.",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
 
@@ -179,10 +187,11 @@ async def manager_link_start(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await state.set_state(ManagerLinkForm.waiting_amount)
 
-    await callback.message.answer(
-        "🔗 **Создание ссылки для оплаты**\n\n"
+    await callback.message.edit_text(
+        "🔗 <b>Создание ссылки для оплаты</b>\n\n"
         "Введите сумму в рублях (кратную 1200):\n"
         "Например: 2400, 4800, 6000",
+        parse_mode="HTML",
         reply_markup=manager_back_keyboard()
     )
     await callback.answer()
@@ -199,6 +208,7 @@ async def process_manager_amount(message: Message, state: FSMContext):
             await message.answer(
                 "❌ Ошибка! Сумма должна быть кратна 1200 ₽.\n"
                 "Пожалуйста, введите сумму, кратную 1200 (например: 1200, 2400, 3600...)",
+                parse_mode="HTML",
                 reply_markup=manager_back_keyboard()
             )
             return
@@ -210,12 +220,14 @@ async def process_manager_amount(message: Message, state: FSMContext):
             "✏️ Введите комментарий (для внутреннего учёта).\n"
             "Этот комментарий будет виден только вам в уведомлении об оплате.\n"
             "Можно оставить пустым, нажав «Отправить».",
+            parse_mode="HTML",
             reply_markup=manager_back_keyboard()
         )
 
     except ValueError:
         await message.answer(
             "❌ Ошибка! Введите корректную сумму (целое положительное число).",
+            parse_mode="HTML",
             reply_markup=manager_back_keyboard()
         )
 
@@ -225,13 +237,13 @@ async def process_manager_comment(message: Message, state: FSMContext):
     data = await state.get_data()
     amount = data.get("amount")
     if not amount:
-        await message.answer("❌ Что-то пошло не так. Попробуйте заново.", reply_markup=main_menu(is_manager=True))
+        await message.answer("❌ Что-то пошло не так. Попробуйте заново.", parse_mode="HTML", reply_markup=main_menu(is_manager=True))
         await state.clear()
         return
 
     comment = message.text.strip()
     if not comment:
-        comment = "Ручная ссылка"  # значение по умолчанию, если пользователь отправил пустое
+        comment = "Ручная ссылка"
 
     await create_link(message, message.from_user.id, amount, comment)
     await state.clear()
@@ -243,7 +255,8 @@ async def manager_back(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     is_man = await is_manager(callback.from_user.id)
     await callback.message.edit_text(
-        "👋 **Главное меню**\n\nВыберите действие:",
+        "👋 <b>Главное меню</b>\n\nВыберите действие:",
+        parse_mode="HTML",
         reply_markup=main_menu(is_man)
     )
     await callback.answer()
@@ -253,13 +266,14 @@ async def manager_back(callback: CallbackQuery, state: FSMContext):
 @router.message(Command("check"))
 async def manager_check_command(message: Message):
     if not await is_manager(message.from_user.id):
-        await message.answer("⛔️ **Нет доступа**")
+        await message.answer("⛔️ <b>Нет доступа</b>", parse_mode="HTML")
         return
 
     parts = message.text.split()
     if len(parts) < 2:
         await message.answer(
-            "❌ Использование: `/check [ID_платежа или номер_заказа]`",
+            "❌ Использование: <code>/check [ID_платежа или номер_заказа]</code>",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
         return
@@ -271,7 +285,8 @@ async def manager_check_command(message: Message):
 
     if not invoice:
         await message.answer(
-            f"❌ Платеж с идентификатором `{identifier}` не найден.",
+            f"❌ Платеж с идентификатором <code>{identifier}</code> не найден.",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
         return
@@ -284,20 +299,20 @@ async def manager_check_command(message: Message):
         update_invoice_status(invoice["payment_id"], "paid")
         invoice = get_invoice_by_payment_id(invoice["payment_id"])
 
-    answer = f"📊 **Информация о платеже**\n\n"
-    answer += f"🆔 **ID платежа:** {invoice['payment_id'][:20]}...\n"
-    answer += f"💰 **Сумма:** {invoice['amount_rub']:,} ₽\n"
-    answer += f"📦 **Заказ:** {invoice['order_number'] or 'Ручная ссылка'}\n"
-    answer += f"📝 **Комментарий (ваш):** {invoice.get('description') or 'Не указан'}\n"
-    answer += f"📍 **Адрес:** {invoice['delivery_address'] or 'Не указан'}\n"
-    answer += f"👤 **ФИО:** {invoice.get('client_name') or 'Не указано'}\n"
-    answer += f"📱 **Телефон:** {invoice.get('client_phone') or 'Не указан'}\n"
-    answer += f"📅 **Создан:** {invoice['created_at']}\n"
-    answer += f"🔘 **Статус в T‑Банк:** {status}\n"
-    answer += f"🔘 **Статус в БД:** {invoice['status'].upper()}\n"
+    answer = f"📊 <b>Информация о платеже</b>\n\n"
+    answer += f"🆔 <b>ID платежа:</b> {invoice['payment_id'][:20]}...\n"
+    answer += f"💰 <b>Сумма:</b> {invoice['amount_rub']:,} ₽\n"
+    answer += f"📦 <b>Заказ:</b> {invoice['order_number'] or 'Ручная ссылка'}\n"
+    answer += f"📝 <b>Комментарий (ваш):</b> {invoice.get('description') or 'Не указан'}\n"
+    answer += f"📍 <b>Адрес:</b> {invoice['delivery_address'] or 'Не указан'}\n"
+    answer += f"👤 <b>ФИО:</b> {invoice.get('client_name') or 'Не указано'}\n"
+    answer += f"📱 <b>Телефон:</b> {invoice.get('client_phone') or 'Не указан'}\n"
+    answer += f"📅 <b>Создан:</b> {invoice['created_at']}\n"
+    answer += f"🔘 <b>Статус в T‑Банк:</b> {status}\n"
+    answer += f"🔘 <b>Статус в БД:</b> {invoice['status'].upper()}\n"
 
     if invoice.get("client_tg_id"):
-        answer += f"\n👤 **Клиент:** @{invoice.get('client_username', 'Неизвестно')} (ID: {invoice['client_tg_id']})"
+        answer += f"\n👤 <b>Клиент:</b> @{invoice.get('client_username', 'Неизвестно')} (ID: {invoice['client_tg_id']})"
 
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
@@ -309,7 +324,7 @@ async def manager_check_command(message: Message):
         builder.button(text="📦 Отправить трек", callback_data="track_none")
         builder.button(text="📢 Уведомить клиента", callback_data="notify_none")
     builder.adjust(2)
-    await message.answer(answer, reply_markup=builder.as_markup())
+    await message.answer(answer, parse_mode="HTML", reply_markup=builder.as_markup())
 
 
 # === Обработчики кнопок "Отправить трек" и "Уведомить" ===
@@ -368,6 +383,7 @@ async def process_track_number(message: Message, state: FSMContext):
     if not order_number:
         await message.answer(
             "❌ Ошибка: номер заказа не найден. Попробуйте заново.",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
         await state.clear()
@@ -382,6 +398,7 @@ async def process_track_number(message: Message, state: FSMContext):
     if not invoice:
         await message.answer(
             f"❌ Заказ {order_number} не найден.",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
         await state.clear()
@@ -391,6 +408,7 @@ async def process_track_number(message: Message, state: FSMContext):
     if not client_tg_id:
         await message.answer(
             f"❌ У заказа {order_number} нет Telegram ID клиента.",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
         await state.clear()
@@ -399,17 +417,20 @@ async def process_track_number(message: Message, state: FSMContext):
     try:
         await message.bot.send_message(
             client_tg_id,
-            f"📦 **Ваш заказ {order_number} отправлен!**\n\n"
-            f"Трек-номер для отслеживания: `{track_number}`\n"
-            f"Вы можете отследить его на сайте СДЭК."
+            f"📦 <b>Ваш заказ {order_number} отправлен!</b>\n\n"
+            f"Трек-номер для отслеживания: <code>{track_number}</code>\n"
+            f"Вы можете отследить его на сайте СДЭК.",
+            parse_mode="HTML"
         )
         await message.answer(
             f"✅ Трек-номер отправлен клиенту по заказу {order_number}.",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
     except Exception as e:
         await message.answer(
             f"❌ Не удалось отправить сообщение: {str(e)}",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
     await state.clear()
@@ -422,6 +443,7 @@ async def process_notify_text(message: Message, state: FSMContext):
     if not order_number:
         await message.answer(
             "❌ Ошибка: номер заказа не найден. Попробуйте заново.",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
         await state.clear()
@@ -436,6 +458,7 @@ async def process_notify_text(message: Message, state: FSMContext):
     if not invoice:
         await message.answer(
             f"❌ Заказ {order_number} не найден.",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
         await state.clear()
@@ -445,6 +468,7 @@ async def process_notify_text(message: Message, state: FSMContext):
     if not client_tg_id:
         await message.answer(
             f"❌ У заказа {order_number} нет Telegram ID клиента.",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
         await state.clear()
@@ -453,15 +477,18 @@ async def process_notify_text(message: Message, state: FSMContext):
     try:
         await message.bot.send_message(
             client_tg_id,
-            f"📢 **Уведомление по заказу {order_number}**\n\n{text}"
+            f"📢 <b>Уведомление по заказу {order_number}</b>\n\n{text}",
+            parse_mode="HTML"
         )
         await message.answer(
             f"✅ Уведомление отправлено клиенту по заказу {order_number}.",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
     except Exception as e:
         await message.answer(
             f"❌ Не удалось отправить сообщение: {str(e)}",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
     await state.clear()
@@ -475,8 +502,9 @@ async def manager_track_start(callback: CallbackQuery, state: FSMContext):
         return
 
     await callback.message.edit_text(
-        "📦 **Отправка трек-номера**\n\n"
-        "Введите номер заказа:"
+        "📦 <b>Отправка трек-номера</b>\n\n"
+        "Введите номер заказа:",
+        parse_mode="HTML"
     )
     await state.set_state(ManagerTrackForm.waiting_order_number)
     await callback.answer()
@@ -487,8 +515,9 @@ async def process_track_order_number(message: Message, state: FSMContext):
     order_number = message.text.strip()
     if not order_number.isdigit():
         await message.answer(
-            "❌ **Номер заказа должен содержать только цифры.**\n\n"
+            "❌ <b>Номер заказа должен содержать только цифры.</b>\n\n"
             "Пожалуйста, введите номер заказа ещё раз.",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
         return
@@ -497,6 +526,7 @@ async def process_track_order_number(message: Message, state: FSMContext):
     if not invoice:
         await message.answer(
             f"❌ Заказ с номером {order_number} не найден. Попробуйте ещё раз.",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
         return
@@ -513,8 +543,9 @@ async def manager_notify_start(callback: CallbackQuery, state: FSMContext):
         return
 
     await callback.message.edit_text(
-        "📢 **Отправка уведомления клиенту**\n\n"
-        "Введите номер заказа:"
+        "📢 <b>Отправка уведомления клиенту</b>\n\n"
+        "Введите номер заказа:",
+        parse_mode="HTML"
     )
     await state.set_state(ManagerNotifyForm.waiting_order_number)
     await callback.answer()
@@ -525,8 +556,9 @@ async def process_notify_order_number(message: Message, state: FSMContext):
     order_number = message.text.strip()
     if not order_number.isdigit():
         await message.answer(
-            "❌ **Номер заказа должен содержать только цифры.**\n\n"
+            "❌ <b>Номер заказа должен содержать только цифры.</b>\n\n"
             "Пожалуйста, введите номер заказа ещё раз.",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
         return
@@ -535,6 +567,7 @@ async def process_notify_order_number(message: Message, state: FSMContext):
     if not invoice:
         await message.answer(
             f"❌ Заказ с номером {order_number} не найден. Попробуйте ещё раз.",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
         return
@@ -548,13 +581,14 @@ async def process_notify_order_number(message: Message, state: FSMContext):
 @router.message(Command("track"))
 async def cmd_track(message: Message):
     if not await is_manager(message.from_user.id):
-        await message.answer("⛔️ Нет доступа")
+        await message.answer("⛔️ <b>Нет доступа</b>", parse_mode="HTML")
         return
 
     parts = message.text.split(maxsplit=2)
     if len(parts) < 3:
         await message.answer(
-            "❌ Использование: `/track [номер заказа] [трек-номер]`",
+            "❌ Использование: <code>/track [номер заказа] [трек-номер]</code>",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
         return
@@ -566,6 +600,7 @@ async def cmd_track(message: Message):
     if not invoice:
         await message.answer(
             f"❌ Заказ с номером {order_number} не найден.",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
         return
@@ -574,6 +609,7 @@ async def cmd_track(message: Message):
     if not client_tg_id:
         await message.answer(
             "❌ У заказа нет Telegram ID клиента.",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
         return
@@ -581,17 +617,20 @@ async def cmd_track(message: Message):
     try:
         await message.bot.send_message(
             client_tg_id,
-            f"📦 **Ваш заказ {order_number} отправлен!**\n\n"
-            f"Трек-номер для отслеживания: `{track_number}`\n"
-            f"Вы можете отследить его на сайте СДЭК."
+            f"📦 <b>Ваш заказ {order_number} отправлен!</b>\n\n"
+            f"Трек-номер для отслеживания: <code>{track_number}</code>\n"
+            f"Вы можете отследить его на сайте СДЭК.",
+            parse_mode="HTML"
         )
         await message.answer(
             f"✅ Трек-номер отправлен клиенту по заказу {order_number}.",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
     except Exception as e:
         await message.answer(
             f"❌ Не удалось отправить сообщение: {str(e)}",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
 
@@ -599,13 +638,14 @@ async def cmd_track(message: Message):
 @router.message(Command("notify"))
 async def cmd_notify(message: Message):
     if not await is_manager(message.from_user.id):
-        await message.answer("⛔️ Нет доступа")
+        await message.answer("⛔️ <b>Нет доступа</b>", parse_mode="HTML")
         return
 
     parts = message.text.split(maxsplit=2)
     if len(parts) < 3:
         await message.answer(
-            "❌ Использование: `/notify [номер заказа] [текст уведомления]`",
+            "❌ Использование: <code>/notify [номер заказа] [текст уведомления]</code>",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
         return
@@ -617,6 +657,7 @@ async def cmd_notify(message: Message):
     if not invoice:
         await message.answer(
             f"❌ Заказ с номером {order_number} не найден.",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
         return
@@ -625,6 +666,7 @@ async def cmd_notify(message: Message):
     if not client_tg_id:
         await message.answer(
             "❌ У заказа нет Telegram ID клиента.",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
         return
@@ -632,15 +674,18 @@ async def cmd_notify(message: Message):
     try:
         await message.bot.send_message(
             client_tg_id,
-            f"📢 **Уведомление по заказу {order_number}**\n\n{text}"
+            f"📢 <b>Уведомление по заказу {order_number}</b>\n\n{text}",
+            parse_mode="HTML"
         )
         await message.answer(
             f"✅ Уведомление отправлено клиенту по заказу {order_number}.",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
     except Exception as e:
         await message.answer(
             f"❌ Не удалось отправить сообщение: {str(e)}",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
 
@@ -649,7 +694,7 @@ async def cmd_notify(message: Message):
 @router.message(Command("showconfig"))
 async def show_config(message: Message):
     if not await is_manager(message.from_user.id):
-        await message.answer("⛔️ Нет доступа")
+        await message.answer("⛔️ <b>Нет доступа</b>", parse_mode="HTML")
         return
 
     key = TBANK_TERMINAL_KEY
@@ -659,10 +704,11 @@ async def show_config(message: Message):
         masked = "***"
 
     await message.answer(
-        f"🔧 **Конфигурация**\n\n"
-        f"TerminalKey: `{masked}`\n"
-        f"API URL: `{TBANK_API_URL}`\n"
-        f"База данных: `{DATABASE_PATH}`",
+        f"🔧 <b>Конфигурация</b>\n\n"
+        f"TerminalKey: <code>{masked}</code>\n"
+        f"API URL: <code>{TBANK_API_URL}</code>\n"
+        f"База данных: <code>{DATABASE_PATH}</code>",
+        parse_mode="HTML",
         reply_markup=main_menu(is_manager=True)
     )
 
@@ -670,16 +716,18 @@ async def show_config(message: Message):
 @router.message(Command("getip"))
 async def get_server_ip(message: Message):
     if not await is_manager(message.from_user.id):
-        await message.answer("⛔️ Нет доступа")
+        await message.answer("⛔️ <b>Нет доступа</b>", parse_mode="HTML")
         return
     try:
         ip = requests.get('https://httpbin.org/ip', timeout=5).json()['origin']
         await message.answer(
-            f"🌐 **IP-адрес сервера:** `{ip}`",
+            f"🌐 <b>IP-адрес сервера:</b> <code>{ip}</code>",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
     except Exception as e:
         await message.answer(
             f"❌ Не удалось получить IP: {str(e)}",
+            parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
