@@ -62,79 +62,70 @@ async def tbank_webhook_handler(request: Request):
         if order_id and status == "CONFIRMED":
             from .database import get_invoice_by_payment_id, update_invoice_status
 
+            print(f"🔍 Ищем инвойс по payment_id = {order_id}")
             invoice = get_invoice_by_payment_id(str(order_id))
-            if invoice and invoice["status"] != "paid":
-                # Обновляем статус
-                update_invoice_status(str(order_id), "paid")
-                # Явно получаем обновлённую запись
-                updated = get_invoice_by_payment_id(str(order_id))
-                if updated:
-                    # === Формирование кнопок ===
-                    builder = InlineKeyboardBuilder()
-                    is_group = updated.get("is_group", 0)
-                    
-                    if is_group:
-                        payment_id = updated.get("payment_id")  # строка, например GROUP_123456 или group_GROUP_...
-                        builder.button(text="📦 Отправить трек", callback_data=f"track_group_{payment_id}")
-                        builder.button(text="📢 Уведомить", callback_data=f"notify_group_{payment_id}")
-                    else:
-                        order_number = updated.get("order_number")
-                        if order_number:
-                            builder.button(text="📦 Отправить трек", callback_data=f"track_{order_number}")
-                            builder.button(text="📢 Уведомить", callback_data=f"notify_{order_number}")
+            print(f"📄 invoice: {invoice}")
+
+            if invoice:
+                print(f"🔘 Статус в БД: {invoice['status']}")
+                if invoice["status"] != "paid":
+                    print("🔄 Обновляем статус на paid...")
+                    update_invoice_status(str(order_id), "paid")
+                    print("✅ Статус обновлён, получаем обновлённую запись...")
+                    updated = get_invoice_by_payment_id(str(order_id))
+                    print(f"📄 updated: {updated}")
+                    if updated:
+                        print("📨 Отправляем уведомления менеджерам...")
+                        # === Формирование кнопок ===
+                        builder = InlineKeyboardBuilder()
+                        is_group = updated.get("is_group", 0)
+
+                        if is_group:
+                            payment_id = updated.get("payment_id")
+                            builder.button(text="📦 Отправить трек", callback_data=f"track_group_{payment_id}")
+                            builder.button(text="📢 Уведомить", callback_data=f"notify_group_{payment_id}")
                         else:
-                            builder.button(text="📦 Отправить трек", callback_data="track_none")
-                            builder.button(text="📢 Уведомить", callback_data="notify_none")
-                    builder.button(text="🏠 Главное меню", callback_data="manager_back")
-                    builder.adjust(2, 1)
+                            order_number = updated.get("order_number")
+                            if order_number:
+                                builder.button(text="📦 Отправить трек", callback_data=f"track_{order_number}")
+                                builder.button(text="📢 Уведомить", callback_data=f"notify_{order_number}")
+                            else:
+                                builder.button(text="📦 Отправить трек", callback_data="track_none")
+                                builder.button(text="📢 Уведомить", callback_data="notify_none")
+                        builder.button(text="🏠 Главное меню", callback_data="manager_back")
+                        builder.adjust(2, 1)
 
-                    initiator_tg_id = updated.get("client_tg_id")
-                    initiator_username = updated.get("client_username")
-                    initiator_text = ""
-                    if initiator_tg_id:
-                        if initiator_username:
-                            initiator_text = f"👤 <b>Инициатор:</b> @{initiator_username} (ID: {initiator_tg_id})\n🔗 <a href='tg://user?id={initiator_tg_id}'>Написать инициатору</a>"
-                        else:
-                            initiator_text = f"👤 <b>Инициатор:</b> ID: {initiator_tg_id}\n🔗 <a href='tg://user?id={initiator_tg_id}'>Написать инициатору</a>"
+                        initiator_tg_id = updated.get("client_tg_id")
+                        initiator_username = updated.get("client_username")
+                        initiator_text = ""
+                        if initiator_tg_id:
+                            if initiator_username:
+                                initiator_text = f"👤 <b>Инициатор:</b> @{initiator_username} (ID: {initiator_tg_id})\n🔗 <a href='tg://user?id={initiator_tg_id}'>Написать инициатору</a>"
+                            else:
+                                initiator_text = f"👤 <b>Инициатор:</b> ID: {initiator_tg_id}\n🔗 <a href='tg://user?id={initiator_tg_id}'>Написать инициатору</a>"
 
-                    paid_at_display = format_paid_at(updated.get('paid_at'))
+                        paid_at_display = format_paid_at(updated.get('paid_at'))
 
-                    # Формируем текст в зависимости от типа платежа
-                    if is_group:
-                        orders_data = updated.get("orders_data")
-                        try:
-                            orders_list = json.loads(orders_data) if orders_data else []
-                        except:
-                            orders_list = []
+                        # Формируем текст
+                        if is_group:
+                            orders_data = updated.get("orders_data")
+                            try:
+                                orders_list = json.loads(orders_data) if orders_data else []
+                            except:
+                                orders_list = []
 
-                        orders_text = "\n".join([
-                            f"• Заказ {o.get('order_number', '?')} – {o.get('amount_rub', 0):,} ₽ (ФИО: {o.get('client_name', 'Не указан')})" +
-                            (" <i>(оплачен с бонусного кошелька)</i>" if o.get('is_paid_by_bonus') else "")
-                            for o in orders_list
-                        ])
+                            orders_text = "\n".join([
+                                f"• Заказ {o.get('order_number', '?')} – {o.get('amount_rub', 0):,} ₽ (ФИО: {o.get('client_name', 'Не указан')})" +
+                                (" <i>(оплачен с бонусного кошелька)</i>" if o.get('is_paid_by_bonus') else "")
+                                for o in orders_list
+                            ])
 
-                        message_text = (
-                            f"<b>✅ ДЕНЬГИ ПОСТУПИЛИ (ГРУППОВОЙ ПЛАТЁЖ)!</b>\n\n"
-                            f"📦 <b>Заказы в оплате:</b>\n{orders_text}\n\n"
-                            f"💰 <b>Общая сумма:</b> {updated['amount_rub']:,} ₽\n"
-                            f"📍 <b>Адрес доставки:</b> {updated.get('delivery_address') or 'Не указан'}\n"
-                            f"👤 <b>Получатель:</b> {updated.get('client_name') or 'Не указан'}\n"
-                            f"📱 <b>Телефон:</b> {updated.get('client_phone') or 'Не указан'}\n"
-                            f"{initiator_text}\n" if initiator_text else ""
-                            f"🕒 <b>Время оплаты:</b> {paid_at_display}\n"
-                            f"🆔 <b>Payment ID:</b> {updated['payment_id']}\n\n"
-                            f"⚡️ Готовьте к отправке!"
-                        )
-                    else:
-                        order_number = updated.get('order_number')
-                        if order_number is not None:
                             message_text = (
-                                f"<b>✅ ДЕНЬГИ ПОСТУПИЛИ!</b>\n\n"
-                                f"📦 <b>Заказ:</b> {order_number}\n"
-                                f"📝 <b>Комментарий:</b> {updated.get('description') or 'Не указан'}\n"
-                                f"💰 <b>Сумма:</b> {updated['amount_rub']:,} ₽\n"
-                                f"📍 <b>Адрес:</b> {updated.get('delivery_address') or 'Не указан'}\n"
-                                f"👤 <b>ФИО получателя:</b> {updated.get('client_name') or 'Не указано'}\n"
+                                f"<b>✅ ДЕНЬГИ ПОСТУПИЛИ (ГРУППОВОЙ ПЛАТЁЖ)!</b>\n\n"
+                                f"📦 <b>Заказы в оплате:</b>\n{orders_text}\n\n"
+                                f"💰 <b>Общая сумма:</b> {updated['amount_rub']:,} ₽\n"
+                                f"📍 <b>Адрес доставки:</b> {updated.get('delivery_address') or 'Не указан'}\n"
+                                f"👤 <b>Получатель:</b> {updated.get('client_name') or 'Не указан'}\n"
                                 f"📱 <b>Телефон:</b> {updated.get('client_phone') or 'Не указан'}\n"
                                 f"{initiator_text}\n" if initiator_text else ""
                                 f"🕒 <b>Время оплаты:</b> {paid_at_display}\n"
@@ -142,76 +133,104 @@ async def tbank_webhook_handler(request: Request):
                                 f"⚡️ Готовьте к отправке!"
                             )
                         else:
-                            message_text = (
-                                f"<b>✅ ДЕНЬГИ ПОСТУПИЛИ!</b>\n\n"
-                                f"📦 <b>Заказ:</b> Ручная ссылка\n"
-                                f"📝 <b>Комментарий:</b> {updated.get('description') or 'Не указан'}\n"
-                                f"💰 <b>Сумма:</b> {updated['amount_rub']:,} ₽\n"
-                                f"📍 <b>Адрес:</b> {updated.get('delivery_address') or 'Не указан'}\n"
-                                f"👤 <b>ФИО:</b> {updated.get('client_name') or 'Не указано'}\n"
-                                f"📱 <b>Телефон:</b> {updated.get('client_phone') or 'Не указан'}\n"
-                                f"{initiator_text}\n" if initiator_text else ""
-                                f"🕒 <b>Время оплаты:</b> {paid_at_display}\n"
-                                f"🆔 <b>Payment ID:</b> {updated['payment_id']}\n\n"
-                                f"⚡️ Готовьте к отправке!"
-                            )
-
-                    # Отправка менеджерам
-                    for manager_id in MANAGER_IDS:
-                        try:
-                            await bot.send_message(
-                                manager_id,
-                                message_text,
-                                parse_mode="HTML",
-                                reply_markup=builder.as_markup()
-                            )
-                        except Exception:
-                            pass
-
-                    # === Уведомление клиенту (инициатору) ===
-                    if updated.get("client_tg_id"):
-                        try:
-                            amount_rub = updated['amount_rub']
-                            if not is_group and order_number is not None:
-                                client_message = (
-                                    f"✅ Оплата по заявке №<b>{order_number}</b> в размере <b>{amount_rub:,}</b> рублей поступила на счёт.\n\n"
-                                    f"Ожидайте подтверждения на сайте в рабочее время и отправки посылки.\n\n"
-                                    f"Спасибо за доверие!"
-                                )
-                            elif is_group:
-                                count = len(orders_list) if 'orders_list' in locals() else 0
-                                client_message = (
-                                    f"✅ Оплата по заявке из <b>{count}</b> заказов в размере <b>{amount_rub:,}</b> рублей поступила на счёт.\n\n"
-                                    f"Ожидайте подтверждения на сайте в рабочее время и отправки посылки.\n\n"
-                                    f"Спасибо за доверие!"
+                            order_number = updated.get('order_number')
+                            if order_number is not None:
+                                message_text = (
+                                    f"<b>✅ ДЕНЬГИ ПОСТУПИЛИ!</b>\n\n"
+                                    f"📦 <b>Заказ:</b> {order_number}\n"
+                                    f"📝 <b>Комментарий:</b> {updated.get('description') or 'Не указан'}\n"
+                                    f"💰 <b>Сумма:</b> {updated['amount_rub']:,} ₽\n"
+                                    f"📍 <b>Адрес:</b> {updated.get('delivery_address') or 'Не указан'}\n"
+                                    f"👤 <b>ФИО получателя:</b> {updated.get('client_name') or 'Не указано'}\n"
+                                    f"📱 <b>Телефон:</b> {updated.get('client_phone') or 'Не указан'}\n"
+                                    f"{initiator_text}\n" if initiator_text else ""
+                                    f"🕒 <b>Время оплаты:</b> {paid_at_display}\n"
+                                    f"🆔 <b>Payment ID:</b> {updated['payment_id']}\n\n"
+                                    f"⚡️ Готовьте к отправке!"
                                 )
                             else:
-                                comment = updated.get("description", "ручная ссылка")
-                                client_message = (
-                                    f"✅ Оплата по заявке на <b>{comment}</b> в размере <b>{amount_rub:,}</b> рублей поступила на счёт.\n\n"
-                                    f"Ожидайте подтверждения на сайте в рабочее время и отправки посылки.\n\n"
-                                    f"Спасибо за доверие!"
+                                message_text = (
+                                    f"<b>✅ ДЕНЬГИ ПОСТУПИЛИ!</b>\n\n"
+                                    f"📦 <b>Заказ:</b> Ручная ссылка\n"
+                                    f"📝 <b>Комментарий:</b> {updated.get('description') or 'Не указан'}\n"
+                                    f"💰 <b>Сумма:</b> {updated['amount_rub']:,} ₽\n"
+                                    f"📍 <b>Адрес:</b> {updated.get('delivery_address') or 'Не указан'}\n"
+                                    f"👤 <b>ФИО:</b> {updated.get('client_name') or 'Не указано'}\n"
+                                    f"📱 <b>Телефон:</b> {updated.get('client_phone') or 'Не указан'}\n"
+                                    f"{initiator_text}\n" if initiator_text else ""
+                                    f"🕒 <b>Время оплаты:</b> {paid_at_display}\n"
+                                    f"🆔 <b>Payment ID:</b> {updated['payment_id']}\n\n"
+                                    f"⚡️ Готовьте к отправке!"
                                 )
-                            await bot.send_message(
-                                updated["client_tg_id"],
-                                client_message,
-                                parse_mode="HTML"
-                            )
-                        except Exception:
-                            pass
+
+                        # Отправка менеджерам
+                        for manager_id in MANAGER_IDS:
+                            try:
+                                await bot.send_message(
+                                    manager_id,
+                                    message_text,
+                                    parse_mode="HTML",
+                                    reply_markup=builder.as_markup()
+                                )
+                            except Exception as e:
+                                print(f"❌ Не удалось отправить менеджеру {manager_id}: {e}")
+
+                        # Уведомление клиенту
+                        if updated.get("client_tg_id"):
+                            try:
+                                amount_rub = updated['amount_rub']
+                                if not is_group and order_number is not None:
+                                    client_message = (
+                                        f"✅ Оплата по заявке №<b>{order_number}</b> в размере <b>{amount_rub:,}</b> рублей поступила на счёт.\n\n"
+                                        f"Ожидайте подтверждения на сайте в рабочее время и отправки посылки.\n\n"
+                                        f"Спасибо за доверие!"
+                                    )
+                                elif is_group:
+                                    count = len(orders_list) if 'orders_list' in locals() else 0
+                                    client_message = (
+                                        f"✅ Оплата по заявке из <b>{count}</b> заказов в размере <b>{amount_rub:,}</b> рублей поступила на счёт.\n\n"
+                                        f"Ожидайте подтверждения на сайте в рабочее время и отправки посылки.\n\n"
+                                        f"Спасибо за доверие!"
+                                    )
+                                else:
+                                    comment = updated.get("description", "ручная ссылка")
+                                    client_message = (
+                                        f"✅ Оплата по заявке на <b>{comment}</b> в размере <b>{amount_rub:,}</b> рублей поступила на счёт.\n\n"
+                                        f"Ожидайте подтверждения на сайте в рабочее время и отправки посылки.\n\n"
+                                        f"Спасибо за доверие!"
+                                    )
+                                await bot.send_message(
+                                    updated["client_tg_id"],
+                                    client_message,
+                                    parse_mode="HTML"
+                                )
+                            except Exception as e:
+                                print(f"❌ Не удалось отправить клиенту: {e}")
+                    else:
+                        # updated is None – что-то пошло не так после обновления
+                        error_msg = f"⚠️ Не удалось получить обновлённый инвойс для OrderId {order_id} после обновления статуса."
+                        print(error_msg)
+                        for manager_id in MANAGER_IDS:
+                            try:
+                                await bot.send_message(manager_id, error_msg)
+                            except Exception:
+                                pass
                 else:
-                    # Если не удалось получить обновлённый инвойс
-                    for manager_id in MANAGER_IDS:
-                        try:
-                            await bot.send_message(
-                                manager_id,
-                                f"⚠️ Не удалось получить обновлённый заказ {order_id} после обновления статуса."
-                            )
-                        except Exception:
-                            pass
+                    print(f"ℹ️ Статус уже paid, пропускаем.")
             else:
-                # Если invoice не найден или уже оплачен – игнорируем
-                pass
+                # invoice не найден
+                print(f"❌ Инвойс с payment_id = {order_id} не найден.")
+                # Можно отправить предупреждение менеджеру
+                for manager_id in MANAGER_IDS:
+                    try:
+                        await bot.send_message(
+                            manager_id,
+                            f"⚠️ Получен вебхук для неизвестного заказа {order_id}. Проверьте БД."
+                        )
+                    except Exception:
+                        pass
+        else:
+            print(f"ℹ️ Статус {status} или отсутствует order_id, игнорируем.")
 
     except Exception as e:
         error_msg = (
