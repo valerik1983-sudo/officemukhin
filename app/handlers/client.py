@@ -75,6 +75,7 @@ async def cmd_help(message: Message):
 @router.callback_query(F.data == "help")
 async def callback_help(callback: CallbackQuery):
     is_manager = callback.from_user.id in MANAGER_IDS
+    # При помощи "Помощь" мы редактируем текущее сообщение, это нормально (диалог)
     await callback.message.edit_text(
         "❓ <b>Помощь</b>\n\n"
         "<b>Для клиентов:</b>\n"
@@ -96,6 +97,7 @@ async def callback_help(callback: CallbackQuery):
 
 @router.callback_query(F.data == "client_order")
 async def start_order(callback: CallbackQuery, state: FSMContext):
+    # Это переход к диалогу – редактируем сообщение
     await callback.message.edit_text(
         "📝 <b>Введите номер вашего заказа</b>\n\n"
         "Например: 123456789\n\n"
@@ -122,11 +124,10 @@ async def process_order_number(message: Message, state: FSMContext):
     await state.update_data(temp_order_number=order)
     await message.answer(
         "💰 <b>Введите сумму к оплате (в рублях)</b>\n\n"
-        "Сумма должна быть кратна 1200.\n"
-        "Если заказ уже оплачен бонусами, введите <b>0</b>.\n"
-        "Или выберите один из вариантов ниже:",
+        "Сумма должна делиться на 1200 без остатка.\n"
+        "Если заказ уже оплачен бонусами, введите <b>0</b>.\n",
         parse_mode="HTML",
-        reply_markup=order_amount_keyboard([2400, 4800, 6000, 12000, 24000])
+        #reply_markup=order_amount_keyboard([2400, 4800, 6000, 12000, 24000])
     )
     await state.set_state(OrderForm.waiting_amount)
 
@@ -136,7 +137,7 @@ async def process_amount_button(callback: CallbackQuery, state: FSMContext):
     if callback.data == "amount_custom":
         await callback.message.edit_text(
             "✏️ <b>Введите свою сумму в рублях</b>\n\n"
-            "Сумма должна быть кратна 1200, или 0 для оплаты бонусами.",
+            "Сумма должна быть кратна 1200 (делиться на 1200), или 0 для оплаты бонусами.",
             parse_mode="HTML"
         )
         await callback.answer()
@@ -162,7 +163,7 @@ async def process_amount_manual(message: Message, state: FSMContext):
         if amount != 0 and amount % 1200 != 0:
             await message.answer(
                 "❌ <b>Ошибка!</b>\n\n"
-                "Сумма должна быть кратна 1200 ₽, или 0 для оплаты бонусами.\n"
+                "Сумма должна быть кратна 1200 ₽ (делиться на 1200 без остатка), или 0 для оплаты бонусами.\n"
                 "Пожалуйста, введите корректную сумму.",
                 parse_mode="HTML"
             )
@@ -546,11 +547,15 @@ async def process_recipient_phone(message: Message, state: FSMContext):
     await state.clear()
 
 
+# === ИСПРАВЛЕННАЯ КНОПКА ГЛАВНОГО МЕНЮ (client) ===
 @router.callback_query(F.data == "main_menu")
 async def main_menu_callback(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     is_manager = callback.from_user.id in MANAGER_IDS
-    await callback.message.edit_text(
+    # Убираем клавиатуру у текущего сообщения (не редактируем текст)
+    await callback.message.edit_reply_markup(reply_markup=None)
+    # Отправляем новое сообщение с меню
+    await callback.message.answer(
         "👋 <b>Главное меню</b>\n\nВыберите действие:",
         parse_mode="HTML",
         reply_markup=main_menu(is_manager)
