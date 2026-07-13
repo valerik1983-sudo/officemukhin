@@ -99,20 +99,45 @@ async def create_link(message: Message, creator_id: int, amount_rub: int, commen
             await message.bot.send_message(creator_id, error_detail)
         return
 
-    # Сохраняем в БД: комментарий кладём в description
-    save_invoice({
-        "payment_id": order_id,                # строка
-        "amount": amount_rub * 100,
-        "amount_rub": amount_rub,
-        "order_number": None,
-        "delivery_address": None,
-        "client_tg_id": creator_id if creator_id else None,
-        "client_username": None,
-        "creator_tg_id": creator_id,
-        "description": comment,                # комментарий менеджера
-        "is_group": 0,
-        "orders_data": None
-    })
+    # Сохраняем в БД
+    try:
+        save_invoice({
+            "payment_id": order_id,
+            "amount": amount_rub * 100,
+            "amount_rub": amount_rub,
+            "order_number": None,
+            "delivery_address": None,
+            "client_tg_id": creator_id if creator_id else None,
+            "client_username": None,
+            "creator_tg_id": creator_id,
+            "description": comment,
+            "is_group": 0,
+            "orders_data": None
+        })
+        # Проверяем, что запись создалась
+        saved = get_invoice_by_payment_id(order_id)
+        if saved:
+            print(f"✅ Инвойс сохранён: {saved}")
+        else:
+            print(f"❌ Инвойс НЕ сохранён для payment_id = {order_id}")
+            for manager_id in MANAGER_IDS:
+                try:
+                    await message.bot.send_message(
+                        manager_id,
+                        f"⚠️ Не удалось сохранить инвойс с payment_id = {order_id}. Проверьте БД."
+                    )
+                except Exception:
+                    pass
+    except Exception as e:
+        print(f"❌ Ошибка при сохранении инвойса: {e}")
+        for manager_id in MANAGER_IDS:
+            try:
+                await message.bot.send_message(
+                    manager_id,
+                    f"❌ Критическая ошибка при сохранении инвойса {order_id}: {str(e)}"
+                )
+            except Exception:
+                pass
 
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
