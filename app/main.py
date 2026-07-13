@@ -60,11 +60,38 @@ async def tbank_webhook_handler(request: Request):
         status = data.get("Status")
 
         if order_id and status == "CONFIRMED":
-            from .database import get_invoice_by_payment_id, update_invoice_status
+            from .database import get_invoice_by_payment_id, update_invoice_status, get_all_invoices
 
-            print(f"🔍 Ищем инвойс по payment_id = {order_id}")
+            print(f"🔍 Ищем инвойс по payment_id = '{order_id}'")
             invoice = get_invoice_by_payment_id(str(order_id))
             print(f"📄 invoice: {invoice}")
+
+            # Если не нашли, пробуем очистить от возможных пробелов
+            if not invoice:
+                clean_id = str(order_id).strip()
+                if clean_id != order_id:
+                    print(f"🔍 Пробуем без пробелов: '{clean_id}'")
+                    invoice = get_invoice_by_payment_id(clean_id)
+                    print(f"📄 invoice после очистки: {invoice}")
+
+            # Если всё ещё не нашли, выводим список всех payment_id для отладки
+            if not invoice:
+                print("⚠️ Инвойс не найден. Список всех payment_id в БД (первые 50):")
+                all_invoices = get_all_invoices(limit=50)
+                payment_ids = [inv['payment_id'] for inv in all_invoices]
+                print(f"  - {', '.join(payment_ids)}")
+                # Отправляем менеджеру список payment_id для ручной проверки
+                for manager_id in MANAGER_IDS:
+                    try:
+                        await bot.send_message(
+                            manager_id,
+                            f"⚠️ Получен вебхук для неизвестного заказа {order_id}.\n"
+                            f"Список payment_id в БД (первые 50):\n{', '.join(payment_ids)}"
+                        )
+                    except Exception:
+                        pass
+                # Пропускаем дальнейшую обработку
+                return {"status": "ok"}
 
             if invoice:
                 print(f"🔘 Статус в БД: {invoice['status']}")
@@ -218,17 +245,8 @@ async def tbank_webhook_handler(request: Request):
                 else:
                     print(f"ℹ️ Статус уже paid, пропускаем.")
             else:
-                # invoice не найден
-                print(f"❌ Инвойс с payment_id = {order_id} не найден.")
-                # Можно отправить предупреждение менеджеру
-                for manager_id in MANAGER_IDS:
-                    try:
-                        await bot.send_message(
-                            manager_id,
-                            f"⚠️ Получен вебхук для неизвестного заказа {order_id}. Проверьте БД."
-                        )
-                    except Exception:
-                        pass
+                # Этот блок уже обработан выше, но оставим на всякий случай
+                print(f"❌ Инвойс с payment_id = '{order_id}' не найден (повторная проверка).")
         else:
             print(f"ℹ️ Статус {status} или отсутствует order_id, игнорируем.")
 
