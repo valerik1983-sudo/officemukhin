@@ -40,6 +40,23 @@ async def is_manager(user_id: int) -> bool:
     return user_id in MANAGER_IDS
 
 
+# === Универсальная функция поиска инвойса по любому ID (удаляет все префиксы) ===
+def find_invoice_by_any_id(identifier: str):
+    """Ищет инвойс по payment_id, пробуя удалять префиксы group_ и GROUP_"""
+    if not identifier:
+        return None
+    invoice = get_invoice_by_payment_id(identifier)
+    if invoice:
+        return invoice
+    temp = identifier
+    while temp.startswith(("group_", "GROUP_")):
+        temp = temp[6:]
+        invoice = get_invoice_by_payment_id(temp)
+        if invoice:
+            return invoice
+    return None
+
+
 @router.message(Command("menu"))
 async def cmd_menu(message: Message):
     if not await is_manager(message.from_user.id):
@@ -52,10 +69,11 @@ async def cmd_menu(message: Message):
     )
 
 
-# === Функция нормализации payment_id ===
+# === Функция нормализации payment_id (для сохранения) ===
 def normalize_payment_id(pid: str) -> str:
-    if pid.startswith("group_"):
-        return pid[6:]
+    # Удаляем все префиксы при сохранении
+    while pid.startswith(("group_", "GROUP_")):
+        pid = pid[6:]
     return pid
 
 
@@ -279,16 +297,10 @@ async def process_manager_comment(message: Message, state: FSMContext):
     await state.clear()
 
 
-# ======= ИЗМЕНЕННАЯ КНОПКА «Главное меню» =======
-# Теперь она НЕ удаляет клавиатуру у уведомления,
-# а просто отправляет новое сообщение с меню.
 @router.callback_query(F.data == "manager_back")
 async def manager_back(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     is_man = await is_manager(callback.from_user.id)
-    # НЕ удаляем клавиатуру у текущего сообщения, оставляем её как есть
-    # await callback.message.edit_reply_markup(reply_markup=None)  # закомментировано
-    # Отправляем новое сообщение с меню
     await callback.message.answer(
         "👋 <b>Главное меню</b>\n\nВыберите действие:",
         parse_mode="HTML",
@@ -313,10 +325,9 @@ async def manager_check_command(message: Message):
         return
 
     identifier = parts[1].strip()
-    invoice = get_invoice_by_payment_id(identifier)
+    invoice = find_invoice_by_any_id(identifier)
     if not invoice:
         invoice = get_invoice_by_order_number(identifier)
-
     if not invoice:
         await message.answer(
             f"❌ Платеж с идентификатором <code>{identifier}</code> не найден.",
@@ -361,6 +372,7 @@ async def manager_check_command(message: Message):
     await message.answer(answer, parse_mode="HTML", reply_markup=builder.as_markup())
 
 
+# === Обработчики кнопок из уведомлений (одиночные) ===
 @router.callback_query(F.data.startswith("track_"))
 async def track_from_check(callback: CallbackQuery, state: FSMContext):
     if not await is_manager(callback.from_user.id):
@@ -417,17 +429,14 @@ async def notify_from_check(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-# === Гибкие обработчики для групповых платежей ===
+# === Гибкие обработчики для групповых платежей (из уведомлений) ===
 @router.callback_query(F.data.startswith("track_group_"))
 async def track_group_start(callback: CallbackQuery, state: FSMContext):
     if not await is_manager(callback.from_user.id):
         await callback.answer("⛔️ Нет доступа", show_alert=True)
         return
     payment_id = callback.data.split("_", 2)[2]
-    invoice = get_invoice_by_payment_id(payment_id)
-    if not invoice and payment_id.startswith("group_"):
-        alt_id = payment_id[6:]
-        invoice = get_invoice_by_payment_id(alt_id)
+    invoice = find_invoice_by_any_id(payment_id)
     if not invoice:
         await callback.answer("❌ Платёж не найден.", show_alert=True)
         return
@@ -452,10 +461,7 @@ async def notify_group_start(callback: CallbackQuery, state: FSMContext):
         await callback.answer("⛔️ Нет доступа", show_alert=True)
         return
     payment_id = callback.data.split("_", 2)[2]
-    invoice = get_invoice_by_payment_id(payment_id)
-    if not invoice and payment_id.startswith("group_"):
-        alt_id = payment_id[6:]
-        invoice = get_invoice_by_payment_id(alt_id)
+    invoice = find_invoice_by_any_id(payment_id)
     if not invoice:
         await callback.answer("❌ Платёж не найден.", show_alert=True)
         return
@@ -488,10 +494,7 @@ async def process_track_number(message: Message, state: FSMContext):
     original_message_id = data.get("original_message_id")
 
     if group_payment_id:
-        invoice = get_invoice_by_payment_id(group_payment_id)
-        if not invoice and group_payment_id.startswith("group_"):
-            alt_id = group_payment_id[6:]
-            invoice = get_invoice_by_payment_id(alt_id)
+        invoice = find_invoice_by_any_id(group_payment_id)
         if not invoice:
             await message.answer("❌ Платёж не найден.", reply_markup=main_menu(is_manager=True))
             await state.clear()
@@ -581,10 +584,7 @@ async def process_notify_text(message: Message, state: FSMContext):
     original_message_id = data.get("original_message_id")
 
     if group_payment_id:
-        invoice = get_invoice_by_payment_id(group_payment_id)
-        if not invoice and group_payment_id.startswith("group_"):
-            alt_id = group_payment_id[6:]
-            invoice = get_invoice_by_payment_id(alt_id)
+        invoice = find_invoice_by_any_id(group_payment_id)
         if not invoice:
             await message.answer("❌ Платёж не найден.", reply_markup=main_menu(is_manager=True))
             await state.clear()
@@ -652,7 +652,7 @@ async def process_notify_text(message: Message, state: FSMContext):
     await state.clear()
 
 
-# === Кнопки главного меню ===
+# === Обработчики для ручного ввода (меню админа) ===
 @router.callback_query(F.data == "manager_track_start")
 async def manager_track_start(callback: CallbackQuery, state: FSMContext):
     if not await is_manager(callback.from_user.id):
@@ -661,7 +661,7 @@ async def manager_track_start(callback: CallbackQuery, state: FSMContext):
 
     await callback.message.edit_text(
         "📦 <b>Отправка трек-номера</b>\n\n"
-        "Введите номер заказа:",
+        "Введите номер заказа или ID платежа (например, GROUP_123456):",
         parse_mode="HTML"
     )
     await state.set_state(ManagerTrackForm.waiting_order_number)
@@ -670,27 +670,47 @@ async def manager_track_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(ManagerTrackForm.waiting_order_number)
 async def process_track_order_number(message: Message, state: FSMContext):
-    order_number = message.text.strip()
-    if not order_number.isdigit():
-        await message.answer(
-            "❌ <b>Номер заказа должен содержать только цифры.</b>\n\n"
-            "Пожалуйста, введите номер заказа ещё раз.",
-            parse_mode="HTML",
-            reply_markup=main_menu(is_manager=True)
-        )
-        return
-
-    invoice = get_invoice_by_order_number(order_number)
+    identifier = message.text.strip()
+    # Ищем по payment_id (универсально) или по order_number
+    invoice = find_invoice_by_any_id(identifier)
+    if not invoice:
+        invoice = get_invoice_by_order_number(identifier)
     if not invoice:
         await message.answer(
-            f"❌ Заказ с номером {order_number} не найден. Попробуйте ещё раз.",
+            f"❌ Заказ или платёж с идентификатором <code>{identifier}</code> не найден. Попробуйте ещё раз.",
             parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
         return
 
-    await state.update_data(order_number=order_number)
-    await message.answer(f"📦 Введите трек-номер для заказа {order_number}:")
+    # Если это групповой платёж, показать список заказов
+    if invoice.get("is_group"):
+        orders_data = invoice.get("orders_data")
+        try:
+            orders_list = json.loads(orders_data) if orders_data else []
+        except:
+            orders_list = []
+        if not orders_list:
+            await message.answer("❌ В групповом платеже нет заказов.", reply_markup=main_menu(is_manager=True))
+            return
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+        for order in orders_list:
+            order_num = order.get('order_number')
+            if order_num:
+                builder.button(text=f"📦 Заказ {order_num}", callback_data=f"select_track_order_{order_num}")
+        builder.button(text="🏠 Главное меню", callback_data="manager_back")
+        builder.adjust(1)
+        await message.answer(
+            "📦 Это групповой платёж. Выберите конкретный заказ, для которого хотите отправить трек-номер:",
+            reply_markup=builder.as_markup()
+        )
+        await state.update_data(group_payment_id=invoice['payment_id'])
+        return
+
+    # Если одиночный заказ
+    await state.update_data(order_number=invoice['order_number'])
+    await message.answer(f"📦 Введите трек-номер для заказа {invoice['order_number']}:")
     await state.set_state(ManagerTrackForm.waiting_track_number)
 
 
@@ -702,7 +722,7 @@ async def manager_notify_start(callback: CallbackQuery, state: FSMContext):
 
     await callback.message.edit_text(
         "📢 <b>Отправка уведомления клиенту</b>\n\n"
-        "Введите номер заказа:",
+        "Введите номер заказа или ID платежа (например, GROUP_123456):",
         parse_mode="HTML"
     )
     await state.set_state(ManagerNotifyForm.waiting_order_number)
@@ -711,30 +731,67 @@ async def manager_notify_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(ManagerNotifyForm.waiting_order_number)
 async def process_notify_order_number(message: Message, state: FSMContext):
-    order_number = message.text.strip()
-    if not order_number.isdigit():
-        await message.answer(
-            "❌ <b>Номер заказа должен содержать только цифры.</b>\n\n"
-            "Пожалуйста, введите номер заказа ещё раз.",
-            parse_mode="HTML",
-            reply_markup=main_menu(is_manager=True)
-        )
-        return
-
-    invoice = get_invoice_by_order_number(order_number)
+    identifier = message.text.strip()
+    invoice = find_invoice_by_any_id(identifier)
+    if not invoice:
+        invoice = get_invoice_by_order_number(identifier)
     if not invoice:
         await message.answer(
-            f"❌ Заказ с номером {order_number} не найден. Попробуйте ещё раз.",
+            f"❌ Заказ или платёж с идентификатором <code>{identifier}</code> не найден. Попробуйте ещё раз.",
             parse_mode="HTML",
             reply_markup=main_menu(is_manager=True)
         )
         return
 
-    await state.update_data(order_number=order_number)
-    await message.answer(f"📢 Введите текст уведомления для заказа {order_number}:")
+    if invoice.get("is_group"):
+        orders_data = invoice.get("orders_data")
+        try:
+            orders_list = json.loads(orders_data) if orders_data else []
+        except:
+            orders_list = []
+        if not orders_list:
+            await message.answer("❌ В групповом платеже нет заказов.", reply_markup=main_menu(is_manager=True))
+            return
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+        for order in orders_list:
+            order_num = order.get('order_number')
+            if order_num:
+                builder.button(text=f"📦 Заказ {order_num}", callback_data=f"select_notify_order_{order_num}")
+        builder.button(text="🏠 Главное меню", callback_data="manager_back")
+        builder.adjust(1)
+        await message.answer(
+            "📦 Это групповой платёж. Выберите конкретный заказ, для которого хотите отправить уведомление:",
+            reply_markup=builder.as_markup()
+        )
+        await state.update_data(group_payment_id=invoice['payment_id'])
+        return
+
+    await state.update_data(order_number=invoice['order_number'])
+    await message.answer(f"📢 Введите текст уведомления для заказа {invoice['order_number']}:")
     await state.set_state(ManagerNotifyForm.waiting_message_text)
 
 
+# === Обработчики выбора заказа из группового платежа ===
+@router.callback_query(F.data.startswith("select_track_order_"))
+async def select_track_order(callback: CallbackQuery, state: FSMContext):
+    order_number = callback.data.split("_", 3)[3]
+    await state.update_data(order_number=order_number)
+    await callback.message.answer(f"📦 Введите трек-номер для заказа {order_number}:")
+    await state.set_state(ManagerTrackForm.waiting_track_number)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("select_notify_order_"))
+async def select_notify_order(callback: CallbackQuery, state: FSMContext):
+    order_number = callback.data.split("_", 3)[3]
+    await state.update_data(order_number=order_number)
+    await callback.message.answer(f"📢 Введите текст уведомления для заказа {order_number}:")
+    await state.set_state(ManagerNotifyForm.waiting_message_text)
+    await callback.answer()
+
+
+# === Команды /track и /notify для быстрого ввода ===
 @router.message(Command("track"))
 async def cmd_track(message: Message):
     if not await is_manager(message.from_user.id):
