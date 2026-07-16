@@ -45,6 +45,16 @@ def format_paid_at(paid_at_str):
         return paid_at_str
 
 
+# === Универсальная функция очистки префиксов для групповых платежей ===
+def clean_group_payment_id(payment_id: str) -> str:
+    if not payment_id:
+        return payment_id
+    # Удаляем все повторяющиеся префиксы group_ и GROUP_
+    while payment_id.startswith(("group_", "GROUP_")):
+        payment_id = payment_id[6:]
+    return payment_id
+
+
 async def tbank_webhook_handler(request: Request):
     data = await request.json()
     print("=== WEBHOOK RECEIVED ===")
@@ -93,9 +103,8 @@ async def tbank_webhook_handler(request: Request):
 
                         if is_group:
                             payment_id = updated.get("payment_id")
-                            # Убираем лишний префикс "group_", если он есть
-                            if payment_id and payment_id.startswith("group_"):
-                                payment_id = payment_id[6:]
+                            # Очищаем от префиксов group_ и GROUP_
+                            payment_id = clean_group_payment_id(payment_id)
                             builder.button(text="📦 Отправить трек", callback_data=f"track_group_{payment_id}")
                             builder.button(text="📢 Уведомить", callback_data=f"notify_group_{payment_id}")
                         else:
