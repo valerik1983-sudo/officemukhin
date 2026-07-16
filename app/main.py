@@ -16,7 +16,7 @@ from .config import (
     MANAGER_IDS,
     TBANK_SECRET_KEY
 )
-from .database import init_db
+from .database import init_db, get_all_invoices
 from .handlers import client, manager
 from .services.tbank import verify_webhook_signature
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -35,7 +35,6 @@ async def telegram_webhook_handler(request: Request):
 
 
 def format_paid_at(paid_at_str):
-    """Преобразует UTC время из БД в московское (UTC+3) и форматирует"""
     if not paid_at_str:
         return 'неизвестно'
     try:
@@ -57,23 +56,15 @@ async def tbank_webhook_handler(request: Request):
             return {"status": "unauthorized"}, 401
 
         order_id = data.get("OrderId")
-        payment_id = data.get("PaymentId")  # числовой ID от T-Банк
         status = data.get("Status")
 
         if order_id and status == "CONFIRMED":
-            from .database import get_invoice_by_payment_id, update_invoice_status, get_all_invoices
+            from .database import get_invoice_by_payment_id, update_invoice_status
 
-            print(f"🔍 Ищем инвойс по OrderId = '{order_id}'")
+            print(f"🔍 Ищем инвойс по payment_id = '{order_id}'")
             invoice = get_invoice_by_payment_id(str(order_id))
-            print(f"📄 invoice по OrderId: {invoice}")
+            print(f"📄 invoice: {invoice}")
 
-            # Если не нашли по OrderId, пробуем по PaymentId (числовому)
-            if not invoice and payment_id:
-                print(f"🔍 Ищем инвойс по PaymentId = '{payment_id}'")
-                invoice = get_invoice_by_payment_id(str(payment_id))
-                print(f"📄 invoice по PaymentId: {invoice}")
-
-            # Если всё ещё не нашли, попробуем убрать возможные пробелы
             if not invoice:
                 clean_id = str(order_id).strip()
                 if clean_id != order_id:
@@ -81,23 +72,11 @@ async def tbank_webhook_handler(request: Request):
                     invoice = get_invoice_by_payment_id(clean_id)
                     print(f"📄 invoice после очистки: {invoice}")
 
-            # Если не нашли, выведем список всех payment_id для отладки
             if not invoice:
                 print("⚠️ Инвойс не найден. Список всех payment_id в БД (первые 50):")
                 all_invoices = get_all_invoices(limit=50)
-                ids_list = [inv['payment_id'] for inv in all_invoices]
-                print(", ".join(ids_list))
-                for manager_id in MANAGER_IDS:
-                    try:
-                        await bot.send_message(
-                            manager_id,
-                            f"⚠️ Получен вебхук для неизвестного заказа {order_id}.\n"
-                            f"PaymentId из вебхука: {payment_id}\n"
-                            f"Список payment_id в БД (первые 50): {', '.join(ids_list)}"
-                        )
-                    except Exception:
-                        pass
-                return {"status": "ok"}
+                ids = [inv['payment_id'] for inv in all_invoices]
+                print(f"  {', '.join(ids)}")
 
             if invoice:
                 print(f"🔘 Статус в БД: {invoice['status']}")
@@ -106,19 +85,19 @@ async def tbank_webhook_handler(request: Request):
                     update_invoice_status(str(order_id), "paid")
                     print("✅ Статус обновлён, получаем обновлённую запись...")
                     updated = get_invoice_by_payment_id(str(order_id))
-                    if not updated and payment_id:
-                        updated = get_invoice_by_payment_id(str(payment_id))
                     print(f"📄 updated: {updated}")
                     if updated:
                         print("📨 Отправляем уведомления менеджерам...")
-                        # === Формирование кнопок ===
                         builder = InlineKeyboardBuilder()
                         is_group = updated.get("is_group", 0)
 
                         if is_group:
-                            payment_id_bd = updated.get("payment_id")
-                            builder.button(text="📦 Отправить трек", callback_data=f"track_group_{payment_id_bd}")
-                            builder.button(text="📢 Уведомить", callback_data=f"notify_group_{payment_id_bd}")
+                            payment_id = updated.get("payment_id")
+                            # Убираем лишний префикс "group_", если он есть
+                            if payment_id and payment_id.startswith("group_"):
+                                payment_id = payment_id[6:]
+                            builder.button(text="📦 Отправить трек", callback_data=f"track_group_{payment_id}")
+                            builder.button(text="📢 Уведомить", callback_data=f"notify_group_{payment_id}")
                         else:
                             order_number = updated.get("order_number")
                             if order_number:
@@ -141,7 +120,6 @@ async def tbank_webhook_handler(request: Request):
 
                         paid_at_display = format_paid_at(updated.get('paid_at'))
 
-                        # Формируем текст
                         if is_group:
                             orders_data = updated.get("orders_data")
                             try:
@@ -198,7 +176,6 @@ async def tbank_webhook_handler(request: Request):
                                     f"⚡️ Готовьте к отправке!"
                                 )
 
-                        # Отправка менеджерам
                         for manager_id in MANAGER_IDS:
                             try:
                                 await bot.send_message(
@@ -210,7 +187,7 @@ async def tbank_webhook_handler(request: Request):
                             except Exception as e:
                                 print(f"❌ Не удалось отправить менеджеру {manager_id}: {e}")
 
-                        # Уведомление клиенту
+                        # === Уведомление клиенту с кнопками ===
                         if updated.get("client_tg_id"):
                             try:
                                 amount_rub = updated['amount_rub']
@@ -234,10 +211,18 @@ async def tbank_webhook_handler(request: Request):
                                         f"Ожидайте подтверждения на сайте в рабочее время и отправки посылки.\n\n"
                                         f"Спасибо за доверие!"
                                     )
+
+                                # Создаём клавиатуру для клиента
+                                client_kb = InlineKeyboardBuilder()
+                                client_kb.button(text="🏠 Главное меню", callback_data="main_menu")
+                                client_kb.button(text="🔄 Оформить новый заказ", callback_data="client_order")
+                                client_kb.adjust(1)
+
                                 await bot.send_message(
                                     updated["client_tg_id"],
                                     client_message,
-                                    parse_mode="HTML"
+                                    parse_mode="HTML",
+                                    reply_markup=client_kb.as_markup()
                                 )
                             except Exception as e:
                                 print(f"❌ Не удалось отправить клиенту: {e}")
@@ -252,8 +237,7 @@ async def tbank_webhook_handler(request: Request):
                 else:
                     print(f"ℹ️ Статус уже paid, пропускаем.")
             else:
-                # invoice не найден – это уже обработано выше, но оставим на всякий случай
-                pass
+                print(f"❌ Инвойс с payment_id = '{order_id}' не найден. (только лог)")
         else:
             print(f"ℹ️ Статус {status} или отсутствует order_id, игнорируем.")
 
