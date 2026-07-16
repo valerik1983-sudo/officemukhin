@@ -40,7 +40,6 @@ async def is_manager(user_id: int) -> bool:
     return user_id in MANAGER_IDS
 
 
-# === Команда /menu ===
 @router.message(Command("menu"))
 async def cmd_menu(message: Message):
     if not await is_manager(message.from_user.id):
@@ -53,7 +52,13 @@ async def cmd_menu(message: Message):
     )
 
 
-# === Функция создания ссылки (с комментарием для себя) ===
+# === Функция нормализации payment_id ===
+def normalize_payment_id(pid: str) -> str:
+    if pid.startswith("group_"):
+        return pid[6:]
+    return pid
+
+
 async def create_link(message: Message, creator_id: int, amount_rub: int, comment: str):
     """
     Создаёт платёж с фиксированным описанием для банка,
@@ -99,10 +104,13 @@ async def create_link(message: Message, creator_id: int, amount_rub: int, commen
             await message.bot.send_message(creator_id, error_detail)
         return
 
+    # Нормализуем payment_id перед сохранением
+    order_id_normalized = normalize_payment_id(order_id)
+
     # Сохраняем в БД
     try:
         save_invoice({
-            "payment_id": order_id,
+            "payment_id": order_id_normalized,
             "amount": amount_rub * 100,
             "amount_rub": amount_rub,
             "order_number": None,
@@ -114,17 +122,16 @@ async def create_link(message: Message, creator_id: int, amount_rub: int, commen
             "is_group": 0,
             "orders_data": None
         })
-        # Проверяем, что запись создалась
-        saved = get_invoice_by_payment_id(order_id)
+        saved = get_invoice_by_payment_id(order_id_normalized)
         if saved:
             print(f"✅ Инвойс сохранён: {saved}")
         else:
-            print(f"❌ Инвойс НЕ сохранён для payment_id = {order_id}")
+            print(f"❌ Инвойс НЕ сохранён для payment_id = {order_id_normalized}")
             for manager_id in MANAGER_IDS:
                 try:
                     await message.bot.send_message(
                         manager_id,
-                        f"⚠️ Не удалось сохранить инвойс с payment_id = {order_id}. Проверьте БД."
+                        f"⚠️ Не удалось сохранить инвойс с payment_id = {order_id_normalized}. Проверьте БД."
                     )
                 except Exception:
                     pass
@@ -134,7 +141,7 @@ async def create_link(message: Message, creator_id: int, amount_rub: int, commen
             try:
                 await message.bot.send_message(
                     manager_id,
-                    f"❌ Критическая ошибка при сохранении инвойса {order_id}: {str(e)}"
+                    f"❌ Критическая ошибка при сохранении инвойса {order_id_normalized}: {str(e)}"
                 )
             except Exception:
                 pass
@@ -167,7 +174,6 @@ async def create_link(message: Message, creator_id: int, amount_rub: int, commen
         )
 
 
-# === Команда /link (с комментарием) ===
 @router.message(Command("link"))
 async def manager_link_command(message: Message):
     if not await is_manager(message.from_user.id):
@@ -202,7 +208,6 @@ async def manager_link_command(message: Message):
         )
 
 
-# === КНОПКА «Создать ссылку» (диалог) ===
 @router.callback_query(F.data == "manager_link")
 async def manager_link_start(callback: CallbackQuery, state: FSMContext):
     if not await is_manager(callback.from_user.id):
@@ -274,13 +279,15 @@ async def process_manager_comment(message: Message, state: FSMContext):
     await state.clear()
 
 
-# === ИСПРАВЛЕННАЯ КНОПКА «Главное меню» (manager) ===
+# ======= ИЗМЕНЕННАЯ КНОПКА «Главное меню» =======
+# Теперь она НЕ удаляет клавиатуру у уведомления,
+# а просто отправляет новое сообщение с меню.
 @router.callback_query(F.data == "manager_back")
 async def manager_back(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     is_man = await is_manager(callback.from_user.id)
-    # Убираем клавиатуру у текущего сообщения (не редактируем текст)
-    await callback.message.edit_reply_markup(reply_markup=None)
+    # НЕ удаляем клавиатуру у текущего сообщения, оставляем её как есть
+    # await callback.message.edit_reply_markup(reply_markup=None)  # закомментировано
     # Отправляем новое сообщение с меню
     await callback.message.answer(
         "👋 <b>Главное меню</b>\n\nВыберите действие:",
@@ -290,7 +297,6 @@ async def manager_back(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-# === Команда /check ===
 @router.message(Command("check"))
 async def manager_check_command(message: Message):
     if not await is_manager(message.from_user.id):
@@ -355,7 +361,6 @@ async def manager_check_command(message: Message):
     await message.answer(answer, parse_mode="HTML", reply_markup=builder.as_markup())
 
 
-# === Обработчики кнопок "Отправить трек" и "Уведомить" (с сохранением исходного сообщения) ===
 @router.callback_query(F.data.startswith("track_"))
 async def track_from_check(callback: CallbackQuery, state: FSMContext):
     if not await is_manager(callback.from_user.id):
@@ -412,7 +417,7 @@ async def notify_from_check(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-# === Обработчики для групповых платежей (с гибким поиском) ===
+# === Гибкие обработчики для групповых платежей ===
 @router.callback_query(F.data.startswith("track_group_"))
 async def track_group_start(callback: CallbackQuery, state: FSMContext):
     if not await is_manager(callback.from_user.id):
@@ -469,7 +474,6 @@ async def notify_group_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-# === ОБРАБОТЧИК ВВОДА ТРЕК-НОМЕРА (с гибким поиском для групповых) ===
 @router.message(ManagerTrackForm.waiting_track_number)
 async def process_track_number(message: Message, state: FSMContext):
     data = await state.get_data()
@@ -523,7 +527,7 @@ async def process_track_number(message: Message, state: FSMContext):
         await state.clear()
         return
 
-    # обычный случай (по order_number)
+    # обычный случай
     if not order_number:
         await message.answer("❌ Ошибка: номер заказа не найден. Попробуйте заново.", parse_mode="HTML", reply_markup=main_menu(is_manager=True))
         await state.clear()
@@ -563,7 +567,6 @@ async def process_track_number(message: Message, state: FSMContext):
     await state.clear()
 
 
-# === ОБРАБОТЧИК ВВОДА ТЕКСТА УВЕДОМЛЕНИЯ (с гибким поиском для групповых) ===
 @router.message(ManagerNotifyForm.waiting_message_text)
 async def process_notify_text(message: Message, state: FSMContext):
     data = await state.get_data()
@@ -649,7 +652,7 @@ async def process_notify_text(message: Message, state: FSMContext):
     await state.clear()
 
 
-# === Кнопки в главном меню для трека и уведомления ===
+# === Кнопки главного меню ===
 @router.callback_query(F.data == "manager_track_start")
 async def manager_track_start(callback: CallbackQuery, state: FSMContext):
     if not await is_manager(callback.from_user.id):
@@ -732,7 +735,6 @@ async def process_notify_order_number(message: Message, state: FSMContext):
     await state.set_state(ManagerNotifyForm.waiting_message_text)
 
 
-# === Команды /track и /notify ===
 @router.message(Command("track"))
 async def cmd_track(message: Message):
     if not await is_manager(message.from_user.id):
@@ -845,7 +847,6 @@ async def cmd_notify(message: Message):
         )
 
 
-# === Диагностика ===
 @router.message(Command("showconfig"))
 async def show_config(message: Message):
     if not await is_manager(message.from_user.id):

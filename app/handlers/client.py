@@ -75,7 +75,6 @@ async def cmd_help(message: Message):
 @router.callback_query(F.data == "help")
 async def callback_help(callback: CallbackQuery):
     is_manager = callback.from_user.id in MANAGER_IDS
-    # При помощи "Помощь" мы редактируем текущее сообщение, это нормально (диалог)
     await callback.message.edit_text(
         "❓ <b>Помощь</b>\n\n"
         "<b>Для клиентов:</b>\n"
@@ -97,7 +96,6 @@ async def callback_help(callback: CallbackQuery):
 
 @router.callback_query(F.data == "client_order")
 async def start_order(callback: CallbackQuery, state: FSMContext):
-    # Это переход к диалогу – редактируем сообщение
     await callback.message.edit_text(
         "📝 <b>Введите номер вашего заказа</b>\n\n"
         "Например: 123456789\n\n"
@@ -127,7 +125,6 @@ async def process_order_number(message: Message, state: FSMContext):
         "Сумма должна делиться на 1200 без остатка.\n"
         "Если заказ уже оплачен бонусами, введите <b>0</b>.\n",
         parse_mode="HTML",
-        #reply_markup=order_amount_keyboard([2400, 4800, 6000, 12000, 24000])
     )
     await state.set_state(OrderForm.waiting_amount)
 
@@ -402,9 +399,17 @@ async def process_recipient_phone(message: Message, state: FSMContext):
         for o in orders_list
     ])
 
+    # === Функция нормализации payment_id ===
+    def normalize_payment_id(pid: str) -> str:
+        if pid.startswith("group_"):
+            return pid[6:]  # убираем префикс "group_"
+        return pid
+
     if total_amount == 0:
+        payment_id = f"BONUS_{int(datetime.now().timestamp())}"
+        payment_id = normalize_payment_id(payment_id)
         save_invoice({
-            "payment_id": f"BONUS_{int(datetime.now().timestamp())}",
+            "payment_id": payment_id,
             "amount": 0,
             "amount_rub": 0,
             "order_number": None,
@@ -456,6 +461,7 @@ async def process_recipient_phone(message: Message, state: FSMContext):
 
     amount_kopecks = total_amount * 100
     payment_id_str = f"GROUP_{int(datetime.now().timestamp())}"
+    payment_id_str = normalize_payment_id(payment_id_str)
 
     bot_info = await message.bot.get_me()
     bot_username = bot_info.username
@@ -547,14 +553,11 @@ async def process_recipient_phone(message: Message, state: FSMContext):
     await state.clear()
 
 
-# === ИСПРАВЛЕННАЯ КНОПКА ГЛАВНОГО МЕНЮ (client) ===
 @router.callback_query(F.data == "main_menu")
 async def main_menu_callback(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     is_manager = callback.from_user.id in MANAGER_IDS
-    # Убираем клавиатуру у текущего сообщения (не редактируем текст)
     await callback.message.edit_reply_markup(reply_markup=None)
-    # Отправляем новое сообщение с меню
     await callback.message.answer(
         "👋 <b>Главное меню</b>\n\nВыберите действие:",
         parse_mode="HTML",
