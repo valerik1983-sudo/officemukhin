@@ -45,11 +45,9 @@ def format_paid_at(paid_at_str):
         return paid_at_str
 
 
-# === Универсальная функция очистки префиксов для групповых платежей ===
 def clean_group_payment_id(payment_id: str) -> str:
     if not payment_id:
         return payment_id
-    # Удаляем все повторяющиеся префиксы group_ и GROUP_
     while payment_id.startswith(("group_", "GROUP_")):
         payment_id = payment_id[6:]
     return payment_id
@@ -100,23 +98,25 @@ async def tbank_webhook_handler(request: Request):
                         print("📨 Отправляем уведомления менеджерам...")
                         builder = InlineKeyboardBuilder()
                         is_group = updated.get("is_group", 0)
+                        order_number = updated.get("order_number")
 
+                        # === Формируем кнопки в зависимости от типа платежа ===
                         if is_group:
                             payment_id = updated.get("payment_id")
-                            # Очищаем от префиксов group_ и GROUP_
                             payment_id = clean_group_payment_id(payment_id)
                             builder.button(text="📦 Отправить трек", callback_data=f"track_group_{payment_id}")
                             builder.button(text="📢 Уведомить", callback_data=f"notify_group_{payment_id}")
+                        elif order_number is not None:
+                            # Одиночный заказ (создан клиентом)
+                            builder.button(text="📦 Отправить трек", callback_data=f"track_{order_number}")
+                            builder.button(text="📢 Уведомить", callback_data=f"notify_{order_number}")
                         else:
-                            order_number = updated.get("order_number")
-                            if order_number:
-                                builder.button(text="📦 Отправить трек", callback_data=f"track_{order_number}")
-                                builder.button(text="📢 Уведомить", callback_data=f"notify_{order_number}")
-                            else:
-                                builder.button(text="📦 Отправить трек", callback_data="track_none")
-                                builder.button(text="📢 Уведомить", callback_data="notify_none")
+                            # Ручная ссылка – только главное меню
+                            pass  # кнопки не добавляем
+
+                        # Кнопка «Главное меню» добавляется всегда
                         builder.button(text="🏠 Главное меню", callback_data="manager_back")
-                        builder.adjust(2, 1)
+                        builder.adjust(2, 1)  # если есть две кнопки, то в ряд по две, потом одна
 
                         initiator_tg_id = updated.get("client_tg_id")
                         initiator_username = updated.get("client_username")
@@ -154,36 +154,35 @@ async def tbank_webhook_handler(request: Request):
                                 f"🆔 <b>Payment ID:</b> {updated['payment_id']}\n\n"
                                 f"⚡️ Готовьте к отправке!"
                             )
+                        elif order_number is not None:
+                            message_text = (
+                                f"<b>✅ ДЕНЬГИ ПОСТУПИЛИ!</b>\n\n"
+                                f"📦 <b>Заказ:</b> {order_number}\n"
+                                f"📝 <b>Комментарий:</b> {updated.get('description') or 'Не указан'}\n"
+                                f"💰 <b>Сумма:</b> {updated['amount_rub']:,} ₽\n"
+                                f"📍 <b>Адрес:</b> {updated.get('delivery_address') or 'Не указан'}\n"
+                                f"👤 <b>ФИО получателя:</b> {updated.get('client_name') or 'Не указано'}\n"
+                                f"📱 <b>Телефон:</b> {updated.get('client_phone') or 'Не указан'}\n"
+                                f"{initiator_text}\n" if initiator_text else ""
+                                f"🕒 <b>Время оплаты:</b> {paid_at_display}\n"
+                                f"🆔 <b>Payment ID:</b> {updated['payment_id']}\n\n"
+                                f"⚡️ Готовьте к отправке!"
+                            )
                         else:
-                            order_number = updated.get('order_number')
-                            if order_number is not None:
-                                message_text = (
-                                    f"<b>✅ ДЕНЬГИ ПОСТУПИЛИ!</b>\n\n"
-                                    f"📦 <b>Заказ:</b> {order_number}\n"
-                                    f"📝 <b>Комментарий:</b> {updated.get('description') or 'Не указан'}\n"
-                                    f"💰 <b>Сумма:</b> {updated['amount_rub']:,} ₽\n"
-                                    f"📍 <b>Адрес:</b> {updated.get('delivery_address') or 'Не указан'}\n"
-                                    f"👤 <b>ФИО получателя:</b> {updated.get('client_name') or 'Не указано'}\n"
-                                    f"📱 <b>Телефон:</b> {updated.get('client_phone') or 'Не указан'}\n"
-                                    f"{initiator_text}\n" if initiator_text else ""
-                                    f"🕒 <b>Время оплаты:</b> {paid_at_display}\n"
-                                    f"🆔 <b>Payment ID:</b> {updated['payment_id']}\n\n"
-                                    f"⚡️ Готовьте к отправке!"
-                                )
-                            else:
-                                message_text = (
-                                    f"<b>✅ ДЕНЬГИ ПОСТУПИЛИ!</b>\n\n"
-                                    f"📦 <b>Заказ:</b> Ручная ссылка\n"
-                                    f"📝 <b>Комментарий:</b> {updated.get('description') or 'Не указан'}\n"
-                                    f"💰 <b>Сумма:</b> {updated['amount_rub']:,} ₽\n"
-                                    f"📍 <b>Адрес:</b> {updated.get('delivery_address') or 'Не указан'}\n"
-                                    f"👤 <b>ФИО:</b> {updated.get('client_name') or 'Не указано'}\n"
-                                    f"📱 <b>Телефон:</b> {updated.get('client_phone') or 'Не указан'}\n"
-                                    f"{initiator_text}\n" if initiator_text else ""
-                                    f"🕒 <b>Время оплаты:</b> {paid_at_display}\n"
-                                    f"🆔 <b>Payment ID:</b> {updated['payment_id']}\n\n"
-                                    f"⚡️ Готовьте к отправке!"
-                                )
+                            # Ручная ссылка – упрощённое сообщение без кнопок трека/уведомления
+                            message_text = (
+                                f"<b>✅ ДЕНЬГИ ПОСТУПИЛИ!</b>\n\n"
+                                f"📦 <b>Заказ:</b> Ручная ссылка\n"
+                                f"📝 <b>Комментарий:</b> {updated.get('description') or 'Не указан'}\n"
+                                f"💰 <b>Сумма:</b> {updated['amount_rub']:,} ₽\n"
+                                f"📍 <b>Адрес:</b> {updated.get('delivery_address') or 'Не указан'}\n"
+                                f"👤 <b>ФИО:</b> {updated.get('client_name') or 'Не указано'}\n"
+                                f"📱 <b>Телефон:</b> {updated.get('client_phone') or 'Не указан'}\n"
+                                f"{initiator_text}\n" if initiator_text else ""
+                                f"🕒 <b>Время оплаты:</b> {paid_at_display}\n"
+                                f"🆔 <b>Payment ID:</b> {updated['payment_id']}\n\n"
+                                f"⚡️ Готовьте к отправке!"
+                            )
 
                         for manager_id in MANAGER_IDS:
                             try:
@@ -196,7 +195,7 @@ async def tbank_webhook_handler(request: Request):
                             except Exception as e:
                                 print(f"❌ Не удалось отправить менеджеру {manager_id}: {e}")
 
-                        # === Уведомление клиенту с кнопками ===
+                        # === Уведомление клиенту (без изменений) ===
                         if updated.get("client_tg_id"):
                             try:
                                 amount_rub = updated['amount_rub']
@@ -221,7 +220,6 @@ async def tbank_webhook_handler(request: Request):
                                         f"Спасибо за доверие!"
                                     )
 
-                                # Создаём клавиатуру для клиента
                                 client_kb = InlineKeyboardBuilder()
                                 client_kb.button(text="🏠 Главное меню", callback_data="main_menu")
                                 client_kb.button(text="🔄 Оформить новый заказ", callback_data="client_order")
