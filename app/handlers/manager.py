@@ -304,7 +304,6 @@ async def process_manager_comment(message: Message, state: FSMContext):
 async def manager_back(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     is_man = await is_manager(callback.from_user.id)
-    # Не удаляем клавиатуру у старого сообщения, отправляем новое
     await callback.message.answer(
         "👋 <b>Главное меню</b>\n\nВыберите действие:",
         parse_mode="HTML",
@@ -313,68 +312,11 @@ async def manager_back(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-# === Обработчики кнопок из уведомлений (одиночные) ===
-@router.callback_query(F.data.startswith("track_"))
-async def track_from_check(callback: CallbackQuery, state: FSMContext):
-    if not await is_manager(callback.from_user.id):
-        await callback.answer("⛔️ Нет доступа", show_alert=True)
-        return
+# =================================================================
+# === ВАЖНО: групповые обработчики ДО одиночных, чтобы они перехватывались первыми ===
+# =================================================================
 
-    order_number = callback.data.split("_", 1)[1]
-    if order_number == "none":
-        await callback.answer("❌ У этого заказа нет номера.", show_alert=True)
-        return
-
-    invoice = get_invoice_by_order_number(order_number)
-    if not invoice:
-        invoice = find_invoice_by_any_id(order_number)
-    if not invoice:
-        await callback.answer(f"❌ Заказ {order_number} не найден.", show_alert=True)
-        return
-
-    await state.update_data(
-        order_number=order_number,
-        original_chat_id=callback.message.chat.id,
-        original_message_id=callback.message.message_id
-    )
-    await callback.message.reply(
-        f"📦 Введите трек-номер для заказа {order_number}:"
-    )
-    await state.set_state(ManagerTrackForm.waiting_track_number)
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("notify_"))
-async def notify_from_check(callback: CallbackQuery, state: FSMContext):
-    if not await is_manager(callback.from_user.id):
-        await callback.answer("⛔️ Нет доступа", show_alert=True)
-        return
-
-    order_number = callback.data.split("_", 1)[1]
-    if order_number == "none":
-        await callback.answer("❌ У этого заказа нет номера.", show_alert=True)
-        return
-
-    invoice = get_invoice_by_order_number(order_number)
-    if not invoice:
-        invoice = find_invoice_by_any_id(order_number)
-    if not invoice:
-        await callback.answer(f"❌ Заказ {order_number} не найден.", show_alert=True)
-        return
-
-    await state.update_data(
-        order_number=order_number,
-        original_chat_id=callback.message.chat.id,
-        original_message_id=callback.message.message_id
-    )
-    await callback.message.reply(
-        f"📢 Введите текст уведомления для заказа {order_number}:"
-    )
-    await state.set_state(ManagerNotifyForm.waiting_message_text)
-    await callback.answer()
-
-
-# === Обработчики для групповых платежей (из уведомлений) ===
+# === Групповые: Отправить трек ===
 @router.callback_query(F.data.startswith("track_group_"))
 async def track_group_start(callback: CallbackQuery, state: FSMContext):
     if not await is_manager(callback.from_user.id):
@@ -389,7 +331,7 @@ async def track_group_start(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ Это не групповой платёж.", show_alert=True)
         return
     
-    # Получаем список заказов
+    # Получаем список заказов для отображения
     orders_data = invoice.get("orders_data")
     try:
         orders_list = json.loads(orders_data) if orders_data else []
@@ -409,6 +351,7 @@ async def track_group_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+# === Групповые: Уведомить ===
 @router.callback_query(F.data.startswith("notify_group_"))
 async def notify_group_start(callback: CallbackQuery, state: FSMContext):
     if not await is_manager(callback.from_user.id):
@@ -442,6 +385,69 @@ async def notify_group_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+# === Одиночные: Отправить трек ===
+@router.callback_query(F.data.startswith("track_"))
+async def track_from_check(callback: CallbackQuery, state: FSMContext):
+    if not await is_manager(callback.from_user.id):
+        await callback.answer("⛔️ Нет доступа", show_alert=True)
+        return
+
+    order_number = callback.data.split("_", 1)[1]
+    if order_number == "none":
+        await callback.answer("❌ У этого заказа нет номера.", show_alert=True)
+        return
+
+    invoice = get_invoice_by_order_number(order_number)
+    if not invoice:
+        invoice = find_invoice_by_any_id(order_number)
+    if not invoice:
+        await callback.answer(f"❌ Заказ {order_number} не найден.", show_alert=True)
+        return
+
+    await state.update_data(
+        order_number=order_number,
+        original_chat_id=callback.message.chat.id,
+        original_message_id=callback.message.message_id
+    )
+    await callback.message.reply(
+        f"📦 Введите трек-номер для заказа {order_number}:"
+    )
+    await state.set_state(ManagerTrackForm.waiting_track_number)
+    await callback.answer()
+
+
+# === Одиночные: Уведомить ===
+@router.callback_query(F.data.startswith("notify_"))
+async def notify_from_check(callback: CallbackQuery, state: FSMContext):
+    if not await is_manager(callback.from_user.id):
+        await callback.answer("⛔️ Нет доступа", show_alert=True)
+        return
+
+    order_number = callback.data.split("_", 1)[1]
+    if order_number == "none":
+        await callback.answer("❌ У этого заказа нет номера.", show_alert=True)
+        return
+
+    invoice = get_invoice_by_order_number(order_number)
+    if not invoice:
+        invoice = find_invoice_by_any_id(order_number)
+    if not invoice:
+        await callback.answer(f"❌ Заказ {order_number} не найден.", show_alert=True)
+        return
+
+    await state.update_data(
+        order_number=order_number,
+        original_chat_id=callback.message.chat.id,
+        original_message_id=callback.message.message_id
+    )
+    await callback.message.reply(
+        f"📢 Введите текст уведомления для заказа {order_number}:"
+    )
+    await state.set_state(ManagerNotifyForm.waiting_message_text)
+    await callback.answer()
+
+
+# === Обработчики ввода (общие для групповых и одиночных) ===
 @router.message(ManagerTrackForm.waiting_track_number)
 async def process_track_number(message: Message, state: FSMContext):
     data = await state.get_data()
@@ -479,7 +485,7 @@ async def process_track_number(message: Message, state: FSMContext):
                 f"Вы можете отследить его на сайте СДЭК.",
                 parse_mode="HTML"
             )
-            # Подтверждение менеджеру
+            # Отправляем подтверждение менеджеру с номерами заказов
             if original_chat_id and original_message_id:
                 await message.bot.send_message(
                     original_chat_id,
@@ -629,7 +635,7 @@ async def process_notify_text(message: Message, state: FSMContext):
     await state.clear()
 
 
-# === Команды /track и /notify для быстрого ввода ===
+# === Команды /track и /notify для быстрого ввода (оставляем) ===
 @router.message(Command("track"))
 async def cmd_track(message: Message):
     if not await is_manager(message.from_user.id):
