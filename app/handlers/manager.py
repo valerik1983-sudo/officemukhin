@@ -451,6 +451,7 @@ async def process_track_number(message: Message, state: FSMContext):
             orders_data = invoice.get("orders_data")
             orders_list = json.loads(orders_data) if orders_data else []
             orders_text = "\n".join([f"• Заказ {o.get('order_number')}" for o in orders_list])
+            # Отправляем клиенту
             await message.bot.send_message(
                 client_tg_id,
                 f"📦 <b>Ваши заказы отправлены!</b>\n\n"
@@ -459,15 +460,19 @@ async def process_track_number(message: Message, state: FSMContext):
                 f"Вы можете отследить его на сайте СДЭК.",
                 parse_mode="HTML"
             )
+            # Отправляем подтверждение менеджеру с номерами заказов
             if original_chat_id and original_message_id:
                 await message.bot.send_message(
                     original_chat_id,
-                    f"✅ Трек-номер отправлен клиенту по групповому заказу.",
+                    f"✅ Трек-номер отправлен клиенту по заказам:\n{orders_text}",
                     reply_to_message_id=original_message_id,
                     parse_mode="HTML"
                 )
             else:
-                await message.answer(f"✅ Трек-номер отправлен клиенту по групповому заказу.", parse_mode="HTML")
+                await message.answer(
+                    f"✅ Трек-номер отправлен клиенту по заказам:\n{orders_text}",
+                    parse_mode="HTML"
+                )
         except Exception as e:
             await message.answer(f"❌ Не удалось отправить сообщение: {str(e)}", parse_mode="HTML")
         await state.clear()
@@ -540,20 +545,26 @@ async def process_notify_text(message: Message, state: FSMContext):
             await state.clear()
             return
         try:
+            orders_data = invoice.get("orders_data")
+            orders_list = json.loads(orders_data) if orders_data else []
+            orders_text = "\n".join([f"• Заказ {o.get('order_number')}" for o in orders_list])
             await message.bot.send_message(
                 client_tg_id,
-                f"📢 <b>Уведомление по групповому заказу</b>\n\n{text}",
+                f"📢 <b>Уведомление по заказам:</b>\n{orders_text}\n\n{text}",
                 parse_mode="HTML"
             )
             if original_chat_id and original_message_id:
                 await message.bot.send_message(
                     original_chat_id,
-                    f"✅ Уведомление отправлено клиенту по групповому заказу.",
+                    f"✅ Уведомление отправлено клиенту по заказам:\n{orders_text}",
                     reply_to_message_id=original_message_id,
                     parse_mode="HTML"
                 )
             else:
-                await message.answer(f"✅ Уведомление отправлено клиенту по групповому заказу.", parse_mode="HTML")
+                await message.answer(
+                    f"✅ Уведомление отправлено клиенту по заказам:\n{orders_text}",
+                    parse_mode="HTML"
+                )
         except Exception as e:
             await message.answer(f"❌ Не удалось отправить сообщение: {str(e)}", parse_mode="HTML")
         await state.clear()

@@ -424,6 +424,12 @@ async def process_recipient_phone(message: Message, state: FSMContext):
             "orders_data": json.dumps(orders_list, ensure_ascii=False)
         })
 
+        # === Сообщение клиенту с кнопками ===
+        client_builder = InlineKeyboardBuilder()
+        client_builder.button(text="🔄 Оформить новый заказ", callback_data="client_order")
+        client_builder.button(text="🏠 Главное меню", callback_data="main_menu")
+        client_builder.adjust(1)
+
         await message.answer(
             f"✅ <b>Все заказы уже оплачены бонусами!</b>\n\n"
             f"📦 Заказы:\n{orders_text}\n\n"
@@ -431,14 +437,16 @@ async def process_recipient_phone(message: Message, state: FSMContext):
             f"👤 Получатель: {recipient_name}\n"
             f"📱 Телефон: {recipient_phone}\n\n"
             f"Спасибо за доверие! Менеджер получит уведомление.",
-            parse_mode="HTML"
+            parse_mode="HTML",
+            reply_markup=client_builder.as_markup()
         )
 
-        builder = InlineKeyboardBuilder()
-        builder.button(text="📦 Отправить трек", callback_data="track_none")
-        builder.button(text="📢 Уведомить", callback_data="notify_none")
-        builder.button(text="🏠 Главное меню", callback_data="manager_back")
-        builder.adjust(2, 1)
+        # === Уведомление менеджеру с кнопками ===
+        manager_builder = InlineKeyboardBuilder()
+        manager_builder.button(text="📦 Отправить трек", callback_data=f"track_group_{payment_id}")
+        manager_builder.button(text="📢 Уведомить", callback_data=f"notify_group_{payment_id}")
+        manager_builder.button(text="🏠 Главное меню", callback_data="manager_back")
+        manager_builder.adjust(2, 1)
 
         for manager_id in MANAGER_IDS:
             try:
@@ -451,7 +459,7 @@ async def process_recipient_phone(message: Message, state: FSMContext):
                     f"📱 Телефон: {recipient_phone}\n"
                     f"👤 Инициатор: @{client_username or 'без username'} (ID: {client_id})",
                     parse_mode="HTML",
-                    reply_markup=builder.as_markup()
+                    reply_markup=manager_builder.as_markup()
                 )
             except Exception:
                 pass
