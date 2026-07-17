@@ -304,6 +304,7 @@ async def process_manager_comment(message: Message, state: FSMContext):
 async def manager_back(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     is_man = await is_manager(callback.from_user.id)
+    # Не удаляем клавиатуру у старого сообщения, отправляем новое
     await callback.message.answer(
         "👋 <b>Главное меню</b>\n\nВыберите действие:",
         parse_mode="HTML",
@@ -312,7 +313,7 @@ async def manager_back(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-# === Обработчики кнопок из уведомлений ===
+# === Обработчики кнопок из уведомлений (одиночные) ===
 @router.callback_query(F.data.startswith("track_"))
 async def track_from_check(callback: CallbackQuery, state: FSMContext):
     if not await is_manager(callback.from_user.id):
@@ -373,6 +374,7 @@ async def notify_from_check(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+# === Обработчики для групповых платежей (из уведомлений) ===
 @router.callback_query(F.data.startswith("track_group_"))
 async def track_group_start(callback: CallbackQuery, state: FSMContext):
     if not await is_manager(callback.from_user.id):
@@ -386,13 +388,22 @@ async def track_group_start(callback: CallbackQuery, state: FSMContext):
     if not invoice.get("is_group"):
         await callback.answer("❌ Это не групповой платёж.", show_alert=True)
         return
+    
+    # Получаем список заказов
+    orders_data = invoice.get("orders_data")
+    try:
+        orders_list = json.loads(orders_data) if orders_data else []
+    except:
+        orders_list = []
+    orders_text = "\n".join([f"• Заказ {o.get('order_number')}" for o in orders_list]) if orders_list else "заказы не найдены"
+    
     await state.update_data(
         group_payment_id=payment_id,
         original_chat_id=callback.message.chat.id,
         original_message_id=callback.message.message_id
     )
     await callback.message.reply(
-        f"📦 Введите трек-номер для группового заказа (будет отправлен инициатору):"
+        f"📦 Введите трек-номер для заказов:\n{orders_text}\n\n(будет отправлен инициатору):"
     )
     await state.set_state(ManagerTrackForm.waiting_track_number)
     await callback.answer()
@@ -411,13 +422,21 @@ async def notify_group_start(callback: CallbackQuery, state: FSMContext):
     if not invoice.get("is_group"):
         await callback.answer("❌ Это не групповой платёж.", show_alert=True)
         return
+    
+    orders_data = invoice.get("orders_data")
+    try:
+        orders_list = json.loads(orders_data) if orders_data else []
+    except:
+        orders_list = []
+    orders_text = "\n".join([f"• Заказ {o.get('order_number')}" for o in orders_list]) if orders_list else "заказы не найдены"
+    
     await state.update_data(
         group_payment_id=payment_id,
         original_chat_id=callback.message.chat.id,
         original_message_id=callback.message.message_id
     )
     await callback.message.reply(
-        f"📢 Введите текст уведомления для группового заказа (будет отправлен инициатору):"
+        f"📢 Введите текст уведомления для заказов:\n{orders_text}\n\n(будет отправлен инициатору):"
     )
     await state.set_state(ManagerNotifyForm.waiting_message_text)
     await callback.answer()
@@ -460,7 +479,7 @@ async def process_track_number(message: Message, state: FSMContext):
                 f"Вы можете отследить его на сайте СДЭК.",
                 parse_mode="HTML"
             )
-            # Отправляем подтверждение менеджеру с номерами заказов
+            # Подтверждение менеджеру
             if original_chat_id and original_message_id:
                 await message.bot.send_message(
                     original_chat_id,
@@ -610,7 +629,7 @@ async def process_notify_text(message: Message, state: FSMContext):
     await state.clear()
 
 
-# === Команды /track и /notify для быстрого ввода (оставляем) ===
+# === Команды /track и /notify для быстрого ввода ===
 @router.message(Command("track"))
 async def cmd_track(message: Message):
     if not await is_manager(message.from_user.id):
