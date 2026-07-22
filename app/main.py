@@ -48,7 +48,7 @@ def format_paid_at(paid_at_str):
 def clean_group_payment_id(payment_id: str) -> str:
     if not payment_id:
         return payment_id
-    while payment_id.startswith(("group_", "GROUP_")):
+    while payment_id.startswith("group_"):
         payment_id = payment_id[6:]
     return payment_id
 
