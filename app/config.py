@@ -29,4 +29,6 @@ TELEGRAM_WEBHOOK_URL = f"{BASE_URL}{TELEGRAM_WEBHOOK_PATH}"
 TBANK_WEBHOOK_URL = f"{BASE_URL}{TBANK_WEBHOOK_PATH}"
 
 # === База данных ===
-DATABASE_PATH = os.getenv("DATABASE_PATH", "bot.db")
+
+DATA_DIR = os.getenv("DATA_DIR", "/app/data")
+DATABASE_PATH = os.path.join(DATA_DIR, "bot.db")
