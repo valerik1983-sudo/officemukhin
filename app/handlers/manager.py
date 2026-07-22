@@ -173,23 +173,24 @@ async def create_link(message: Message, creator_id: int, amount_rub: int, commen
     builder.button(text="🏠 Главное меню", callback_data="manager_back")
     builder.adjust(1)
 
+    # ИЗМЕНЕНО: единый стиль для сообщения о создании ссылки
     if sbp_available:
         await message.answer(
-            f"🔗 <b>Ссылка для оплаты</b>\n"
-            f"💰 <b>Сумма:</b> {amount_rub:,} ₽\n\n"
-            f"📝 <b>Ваш комментарий:</b> {comment}\n"
+            f"💳 <b>Ссылка для оплаты создана</b>\n\n"
+            f"💰 <b>Сумма:</b> {amount_rub:,} ₽\n"
+            f"📝 <b>Комментарий:</b> {comment}\n\n"
+            f"━━━━━━━━━━━━━━\n\n"
             f"🔗 {qr_data}\n\n"
-            f"_Ссылка откроется автоматически при нажатии._",
+            f"✅ <i>Ссылка откроется автоматически при нажатии.</i>",
             parse_mode="HTML",
             reply_markup=builder.as_markup()
         )
     else:
         await message.answer(
-            f"⚠️ <b>СБП временно недоступна.</b>\n"
-            f"Используйте обычную ссылку:\n\n"
-            f"💳 {payment_url}\n"
+            f"⚠️ <b>СБП временно недоступна.</b>\n\n"
+            f"💳 <b>Обычная ссылка для оплаты:</b>\n{payment_url}\n\n"
             f"💰 <b>Сумма:</b> {amount_rub:,} ₽\n"
-            f"📝 <b>Ваш комментарий:</b> {comment}",
+            f"📝 <b>Комментарий:</b> {comment}",
             parse_mode="HTML",
             reply_markup=builder.as_markup()
         )
@@ -476,20 +477,22 @@ async def process_track_number(message: Message, state: FSMContext):
             orders_data = invoice.get("orders_data")
             orders_list = json.loads(orders_data) if orders_data else []
             orders_text = "\n".join([f"• Заказ {o.get('order_number')}" for o in orders_list])
-            # Отправляем клиенту
+            # ИЗМЕНЕНО: отправка клиенту группового трека
             await message.bot.send_message(
                 client_tg_id,
                 f"📦 <b>Ваши заказы отправлены!</b>\n\n"
-                f"Заказы:\n{orders_text}\n\n"
-                f"Трек-номер для отслеживания: <code>{track_number}</code>\n"
-                f"Вы можете отследить его на сайте СДЭК.",
+                f"📦 <b>Заказы:</b>\n{orders_text}\n\n"
+                f"📬 <b>Трек-номер:</b> <code>{track_number}</code>\n\n"
+                f"🔗 Отследить можно на сайте СДЭК.",
                 parse_mode="HTML"
             )
-            # Отправляем подтверждение менеджеру с номерами заказов
+            # ИЗМЕНЕНО: подтверждение менеджеру
             if original_chat_id and original_message_id:
                 await message.bot.send_message(
                     original_chat_id,
-                    f"✅ Трек-номер отправлен клиенту по заказам:\n{orders_text}",
+                    f"✅ <b>Трек-номер отправлен</b>\n\n"
+                    f"📦 Заказы:\n{orders_text}\n"
+                    f"📬 Трек: <code>{track_number}</code>",
                     reply_to_message_id=original_message_id,
                     parse_mode="HTML"
                 )
@@ -524,17 +527,21 @@ async def process_track_number(message: Message, state: FSMContext):
         return
 
     try:
+        # ИЗМЕНЕНО: отправка клиенту одиночного трека
         await message.bot.send_message(
             client_tg_id,
-            f"📦 <b>Ваш заказ {order_number} отправлен!</b>\n\n"
-            f"Трек-номер для отслеживания: <code>{track_number}</code>\n"
-            f"Вы можете отследить его на сайте СДЭК.",
+            f"📦 <b>Ваш заказ отправлен!</b>\n\n"
+            f"🆔 <b>Номер заказа:</b> {order_number}\n"
+            f"📬 <b>Трек-номер:</b> <code>{track_number}</code>\n\n"
+            f"🔗 Отследить можно на сайте СДЭК.",
             parse_mode="HTML"
         )
         if original_chat_id and original_message_id:
             await message.bot.send_message(
                 original_chat_id,
-                f"✅ Трек-номер отправлен клиенту по заказу {order_number}.",
+                f"✅ <b>Трек-номер отправлен</b>\n\n"
+                f"📦 Заказ: {order_number}\n"
+                f"📬 Трек: <code>{track_number}</code>",
                 reply_to_message_id=original_message_id,
                 parse_mode="HTML"
             )
@@ -573,15 +580,17 @@ async def process_notify_text(message: Message, state: FSMContext):
             orders_data = invoice.get("orders_data")
             orders_list = json.loads(orders_data) if orders_data else []
             orders_text = "\n".join([f"• Заказ {o.get('order_number')}" for o in orders_list])
+            # ИЗМЕНЕНО: отправка уведомления клиенту (групповое)
             await message.bot.send_message(
                 client_tg_id,
-                f"📢 <b>Уведомление по заказам:</b>\n{orders_text}\n\n{text}",
+                f"📢 <b>Уведомление по заказам</b>\n\n{orders_text}\n\n━━━━━━━━━━━━━━\n\n{text}",
                 parse_mode="HTML"
             )
             if original_chat_id and original_message_id:
                 await message.bot.send_message(
                     original_chat_id,
-                    f"✅ Уведомление отправлено клиенту по заказам:\n{orders_text}",
+                    f"✅ <b>Уведомление отправлено</b>\n\n"
+                    f"📦 Заказы:\n{orders_text}",
                     reply_to_message_id=original_message_id,
                     parse_mode="HTML"
                 )
@@ -616,15 +625,17 @@ async def process_notify_text(message: Message, state: FSMContext):
         return
 
     try:
+        # ИЗМЕНЕНО: отправка уведомления клиенту (одиночное)
         await message.bot.send_message(
             client_tg_id,
-            f"📢 <b>Уведомление по заказу {order_number}</b>\n\n{text}",
+            f"📢 <b>Уведомление по заказу {order_number}</b>\n\n━━━━━━━━━━━━━━\n\n{text}",
             parse_mode="HTML"
         )
         if original_chat_id and original_message_id:
             await message.bot.send_message(
                 original_chat_id,
-                f"✅ Уведомление отправлено клиенту по заказу {order_number}.",
+                f"✅ <b>Уведомление отправлено</b>\n\n"
+                f"📦 Заказ: {order_number}",
                 reply_to_message_id=original_message_id,
                 parse_mode="HTML"
             )
@@ -675,11 +686,13 @@ async def cmd_track(message: Message):
         return
 
     try:
+        # ИЗМЕНЕНО: команда /track
         await message.bot.send_message(
             client_tg_id,
-            f"📦 <b>Ваш заказ {order_number} отправлен!</b>\n\n"
-            f"Трек-номер для отслеживания: <code>{track_number}</code>\n"
-            f"Вы можете отследить его на сайте СДЭК.",
+            f"📦 <b>Ваш заказ отправлен!</b>\n\n"
+            f"🆔 <b>Номер заказа:</b> {order_number}\n"
+            f"📬 <b>Трек-номер:</b> <code>{track_number}</code>\n\n"
+            f"🔗 Отследить можно на сайте СДЭК.",
             parse_mode="HTML"
         )
         await message.answer(
@@ -734,9 +747,10 @@ async def cmd_notify(message: Message):
         return
 
     try:
+        # ИЗМЕНЕНО: команда /notify
         await message.bot.send_message(
             client_tg_id,
-            f"📢 <b>Уведомление по заказу {order_number}</b>\n\n{text}",
+            f"📢 <b>Уведомление по заказу {order_number}</b>\n\n━━━━━━━━━━━━━━\n\n{text}",
             parse_mode="HTML"
         )
         await message.answer(

@@ -96,7 +96,6 @@ async def callback_help(callback: CallbackQuery):
 
 @router.callback_query(F.data == "client_order")
 async def start_order(callback: CallbackQuery, state: FSMContext):
-    # Редактируем текущее сообщение, чтобы перейти к диалогу
     await callback.message.edit_text(
         "📝 <b>Введите номер вашего заказа</b>\n\n"
         "Например: 123456789\n\n"
@@ -425,40 +424,47 @@ async def process_recipient_phone(message: Message, state: FSMContext):
             "orders_data": json.dumps(orders_list, ensure_ascii=False)
         })
 
-        # === Сообщение клиенту с кнопками ===
+        # === Сообщение клиенту (бонусная оплата) ===
         client_builder = InlineKeyboardBuilder()
         client_builder.button(text="🔄 Оформить новый заказ", callback_data="client_order")
         client_builder.button(text="🏠 Главное меню", callback_data="main_menu")
         client_builder.adjust(1)
 
+        # ИЗМЕНЕНО: сообщение клиенту при оплате бонусами
         await message.answer(
-            f"✅ <b>Все заказы уже оплачены бонусами!</b>\n\n"
-            f"📦 Заказы:\n{orders_text}\n\n"
-            f"📍 Адрес доставки: {recipient_address}\n"
-            f"👤 Получатель: {recipient_name}\n"
-            f"📱 Телефон: {recipient_phone}\n\n"
-            f"Спасибо за доверие! Менеджер получит уведомление.",
+            f"✅ <b>Заказы успешно оплачены бонусами!</b>\n\n"
+            f"💰 <b>Сумма к оплате:</b> 0 ₽ (списано с бонусного счёта)\n\n"
+            f"📦 <b>Состав заказа:</b>\n{orders_text}\n\n"
+            f"━━━━━━━━━━━━━━\n\n"
+            f"👤 <b>Получатель</b>\n{recipient_name}\n\n"
+            f"📱 <b>Телефон</b>\n{recipient_phone}\n\n"
+            f"📍 <b>Адрес доставки</b>\n{recipient_address}\n\n"
+            f"━━━━━━━━━━━━━━\n\n"
+            f"🙏 Спасибо за доверие! Менеджер уже получил уведомление и скоро обработает ваш заказ.",
             parse_mode="HTML",
             reply_markup=client_builder.as_markup()
         )
 
-        # === Уведомление менеджеру с кнопками ===
+        # === Уведомление менеджеру (бонусная оплата) ===
         manager_builder = InlineKeyboardBuilder()
         manager_builder.button(text="📦 Отправить трек", callback_data=f"track_group_{payment_id}")
         manager_builder.button(text="📢 Уведомить", callback_data=f"notify_group_{payment_id}")
         manager_builder.button(text="🏠 Главное меню", callback_data="manager_back")
         manager_builder.adjust(2, 1)
 
+        # ИЗМЕНЕНО: уведомление менеджеру
         for manager_id in MANAGER_IDS:
             try:
                 await message.bot.send_message(
                     manager_id,
-                    f"<b>✅ ЗАКАЗЫ ОПЛАЧЕНЫ БОНУСАМИ!</b>\n\n"
-                    f"📦 Заказы:\n{orders_text}\n\n"
-                    f"📍 Адрес: {recipient_address}\n"
-                    f"👤 Получатель: {recipient_name}\n"
-                    f"📱 Телефон: {recipient_phone}\n"
-                    f"👤 Инициатор: @{client_username or 'без username'} (ID: {client_id})",
+                    f"✅ <b>НОВЫЙ ЗАКАЗ (ОПЛАЧЕН БОНУСАМИ)</b>\n\n"
+                    f"📦 <b>Состав заказа:</b>\n{orders_text}\n\n"
+                    f"━━━━━━━━━━━━━━\n\n"
+                    f"👤 <b>Получатель</b>\n{recipient_name}\n\n"
+                    f"📱 <b>Телефон</b>\n{recipient_phone}\n\n"
+                    f"📍 <b>Адрес доставки</b>\n{recipient_address}\n\n"
+                    f"━━━━━━━━━━━━━━\n\n"
+                    f"👤 <b>Инициатор</b>\n@{client_username or 'без username'} (ID: {client_id})",
                     parse_mode="HTML",
                     reply_markup=manager_builder.as_markup()
                 )
@@ -532,29 +538,36 @@ async def process_recipient_phone(message: Message, state: FSMContext):
     builder.button(text="🏠 Главное меню", callback_data="main_menu")
     builder.adjust(1)
 
+    # ИЗМЕНЕНО: единый стиль для финального сообщения (с СБП или без)
     if sbp_available:
         await message.answer(
-            f"🔗 <b>Ссылка для оплаты {len(orders_list)} заказов:</b>\n{qr_data}\n\n"
-            f"💰 <b>Общая сумма:</b> {total_amount:,} ₽\n\n"
-            f"📦 Заказы:\n{orders_text}\n\n"
-            f"📍 Адрес: {recipient_address}\n"
-            f"👤 Получатель: {recipient_name}\n"
-            f"📱 Телефон: {recipient_phone}\n\n"
-            f"<i>Автоматически поступит на счёт после оплаты.</i>",
+            f"💳 <b>Счёт сформирован</b>\n\n"
+            f"Ваш платёж готов к оплате.\n\n"
+            f"💰 <b>К оплате:</b> {total_amount:,} ₽\n\n"
+            f"📦 <b>Состав заказа:</b>\n{orders_text}\n\n"
+            f"━━━━━━━━━━━━━━\n\n"
+            f"👤 <b>Получатель</b>\n{recipient_name}\n\n"
+            f"📱 <b>Телефон</b>\n{recipient_phone}\n\n"
+            f"📍 <b>Адрес доставки</b>\n{recipient_address}\n\n"
+            f"━━━━━━━━━━━━━━\n\n"
+            f"🔗 <b>Ссылка для оплаты:</b>\n\n{qr_data}\n\n"
+            f"✅ <i>После успешной оплаты средства автоматически поступят на счёт, а заказ перейдёт в обработку.</i>",
             parse_mode="HTML",
             reply_markup=builder.as_markup()
         )
     else:
         await message.answer(
-            f"⚠️ <b>СБП временно недоступна.</b>\n"
-            f"Используйте обычную ссылку:\n\n"
-            f"💳 {payment_url}\n"
-            f"💰 <b>Общая сумма:</b> {total_amount:,} ₽\n\n"
-            f"📦 Заказы:\n{orders_text}\n\n"
-            f"📍 Адрес: {recipient_address}\n"
-            f"👤 Получатель: {recipient_name}\n"
-            f"📱 Телефон: {recipient_phone}\n\n"
-            f"<i>Оплата по этой ссылке также автоматически поступит на счёт.</i>",
+            f"⚠️ <b>СБП временно недоступна.</b>\n\n"
+            f"💳 <b>Счёт сформирован</b>\n\n"
+            f"💰 <b>К оплате:</b> {total_amount:,} ₽\n\n"
+            f"📦 <b>Состав заказа:</b>\n{orders_text}\n\n"
+            f"━━━━━━━━━━━━━━\n\n"
+            f"👤 <b>Получатель</b>\n{recipient_name}\n\n"
+            f"📱 <b>Телефон</b>\n{recipient_phone}\n\n"
+            f"📍 <b>Адрес доставки</b>\n{recipient_address}\n\n"
+            f"━━━━━━━━━━━━━━\n\n"
+            f"🔗 <b>Обычная ссылка для оплаты:</b>\n{payment_url}\n\n"
+            f"✅ <i>После успешной оплаты средства автоматически поступят на счёт, а заказ перейдёт в обработку.</i>",
             parse_mode="HTML",
             reply_markup=builder.as_markup()
         )
@@ -566,9 +579,7 @@ async def process_recipient_phone(message: Message, state: FSMContext):
 async def main_menu_callback(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     is_manager = callback.from_user.id in MANAGER_IDS
-    # Убираем клавиатуру у текущего сообщения, чтобы не было висячих кнопок
     await callback.message.edit_reply_markup(reply_markup=None)
-    # Отправляем новое сообщение с меню
     await callback.message.answer(
         "👋 <b>Главное меню</b>\n\nВыберите действие:",
         parse_mode="HTML",
